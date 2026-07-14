@@ -1,7 +1,7 @@
 import { PDFDocument } from "pdf-lib";
 import { parseContentStream } from "./content-stream-parser";
 import { detectWatermark } from "./structural-detector";
-import type { WorkerMessage, ImagePlacement } from "./types";
+import type { WorkerMessage, ImagePlacement, PdfDebugInfo } from "./types";
 
 interface PDFStreamLike {
   getUnencodedContents?(): Uint8Array;
@@ -15,14 +15,22 @@ interface PDFPageNode {
         get(
           key: unknown,
         ): { entries?(): Iterable<[unknown, unknown]>; delete?(key: unknown): void } | undefined;
+        entries?(): Iterable<[unknown, unknown]>;
       }
     | undefined;
   Contents(): PDFStreamLike | PDFStreamLike[] | undefined;
   set(key: unknown, value: unknown): void;
+  MediaBox(): { get(index: number): number };
 }
 
 function post(msg: WorkerMessage) {
   postMessage(msg);
+}
+
+function decodePdfName(raw: unknown): string {
+  const rawName = raw as string | { decodeText?(): string };
+  const name = typeof rawName === "string" ? rawName : (rawName.decodeText?.() ?? String(rawName));
+  return name.startsWith("/") ? name.substring(1) : name;
 }
 
 export function removeWatermarkFromContentStream(content: string, watermarkName: string): string {
@@ -85,29 +93,84 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
   const page = pages[0];
   const pageNode = page.node as unknown as PDFPageNode;
 
+  const mediaBox = pageNode.MediaBox();
+  const pageWidth = mediaBox.get(2);
+  const pageHeight = mediaBox.get(3);
+
   const resources = pageNode.Resources();
+
+  const debugResources: Record<string, string[]> = {};
+  if (resources?.entries) {
+    for (const [key, value] of resources.entries()) {
+      const name = decodePdfName(key);
+      if (value && typeof value === "object" && "entries" in value) {
+        const subKeys: string[] = [];
+        for (const [subKey] of (value as { entries(): Iterable<[unknown, unknown]> }).entries()) {
+          subKeys.push(decodePdfName(subKey));
+        }
+        debugResources[name] = subKeys;
+      } else {
+        debugResources[name] = [];
+      }
+    }
+  }
+
   if (!resources) {
+    post({
+      type: "debug",
+      info: {
+        pageCount: pages.length,
+        pageWidth,
+        pageHeight,
+        resources: debugResources,
+        xobjectNames: [],
+        xobjectTypes: {},
+        contentStreamLength: 0,
+        imagePlacements: [],
+        detectionResult: null,
+      },
+    });
     post({ type: "error", message: "Page has no resources" });
     return;
   }
 
   const xobjectDict = resources.get(pdfDoc.context.obj("/XObject"));
   if (!xobjectDict) {
+    post({
+      type: "debug",
+      info: {
+        pageCount: pages.length,
+        pageWidth,
+        pageHeight,
+        resources: debugResources,
+        xobjectNames: [],
+        xobjectTypes: {},
+        contentStreamLength: 0,
+        imagePlacements: [],
+        detectionResult: null,
+      },
+    });
     post({ type: "error", message: "No XObjects found on page" });
     return;
   }
 
   post({ type: "progress", stage: "Parsing image XObjects...", percent: 20 });
 
-  const xobjectNames = new Set<string>();
+  const xobjectNames: string[] = [];
+  const xobjectTypes: Record<string, string> = {};
   const dictMap = xobjectDict.entries ? xobjectDict.entries() : [];
 
-  for (const [key] of dictMap) {
-    const rawName = key as string | { decodeText?(): string };
-    const name =
-      typeof rawName === "string" ? rawName : (rawName.decodeText?.() ?? String(rawName));
-    const cleanName = name.startsWith("/") ? name.substring(1) : name;
-    xobjectNames.add(cleanName);
+  for (const [key, value] of dictMap) {
+    const cleanName = decodePdfName(key);
+    xobjectNames.push(cleanName);
+    if (value && typeof value === "object") {
+      const dict = value as { get?(key: unknown): unknown };
+      const subtype = dict.get?.("/Subtype");
+      const subtypeStr = subtype ? decodePdfName(subtype) : "unknown";
+      xobjectTypes[cleanName] = subtypeStr;
+    } else {
+      xobjectTypes[cleanName] = "unknown";
+    }
   }
 
   const contents = pageNode.Contents();
@@ -130,13 +193,54 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
   }
 
   if (!contentStr) {
+    post({
+      type: "debug",
+      info: {
+        pageCount: pages.length,
+        pageWidth,
+        pageHeight,
+        resources: debugResources,
+        xobjectNames,
+        xobjectTypes,
+        contentStreamLength: 0,
+        imagePlacements: [],
+        detectionResult: null,
+      },
+    });
     post({ type: "error", message: "Could not read page content stream" });
     return;
   }
 
   post({ type: "progress", stage: "Detecting watermark...", percent: 40 });
 
-  const images: ImagePlacement[] = parseContentStream(contentStr, xobjectNames);
+  const images: ImagePlacement[] = parseContentStream(contentStr, new Set(xobjectNames));
+
+  const detectionResult =
+    images.length > 0
+      ? (() => {
+          const watermark = detectWatermark(images);
+          const gridImages = images.filter((img) => img !== watermark);
+          return {
+            watermark: watermark?.box ?? null,
+            images,
+            gridImages,
+          };
+        })()
+      : null;
+
+  const debugInfo: PdfDebugInfo = {
+    pageCount: pages.length,
+    pageWidth,
+    pageHeight,
+    resources: debugResources,
+    xobjectNames,
+    xobjectTypes,
+    contentStreamLength: contentStr.length,
+    imagePlacements: images,
+    detectionResult,
+  };
+
+  post({ type: "debug", info: debugInfo });
 
   if (images.length === 0) {
     post({ type: "error", message: "No images found on page" });

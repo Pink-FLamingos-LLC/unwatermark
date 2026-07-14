@@ -16,6 +16,18 @@ export interface DetectionResult {
   gridImages: ImagePlacement[];
 }
 
+export interface PdfDebugInfo {
+  pageCount: number;
+  pageWidth: number;
+  pageHeight: number;
+  resources: Record<string, string[]>;
+  xobjectNames: string[];
+  xobjectTypes: Record<string, string>;
+  contentStreamLength: number;
+  imagePlacements: ImagePlacement[];
+  detectionResult: DetectionResult | null;
+}
+
 export type WorkerProgressMessage = {
   type: "progress";
   stage: string;
@@ -27,9 +39,18 @@ export type WorkerResultMessage = {
   processedPdf: Uint8Array;
 };
 
+export type WorkerDebugMessage = {
+  type: "debug";
+  info: PdfDebugInfo;
+};
+
 export type WorkerErrorMessage = {
   type: "error";
   message: string;
 };
 
-export type WorkerMessage = WorkerProgressMessage | WorkerResultMessage | WorkerErrorMessage;
+export type WorkerMessage =
+  | WorkerProgressMessage
+  | WorkerResultMessage
+  | WorkerDebugMessage
+  | WorkerErrorMessage;
