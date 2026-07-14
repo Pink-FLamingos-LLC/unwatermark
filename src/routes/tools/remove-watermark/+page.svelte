@@ -52,7 +52,10 @@
 			advancedMode = false;
 			manualSelection = null;
 		}
-		if (uploadedFile && error && method === 'structural') {
+		if (uploadedFile && method === 'structural') {
+			processFile(uploadedFile);
+		}
+		if (uploadedFile && method === 'visual' && !advancedMode) {
 			processFile(uploadedFile);
 		}
 	}
@@ -199,7 +202,7 @@
 			{#if debugInfo && debugInfo.xobjectNames.length > 0 && debugInfo.imagePlacements.length === 0}
 				<p class="text-label-sm text-on-error-container/80">
 					This PDF has {debugInfo.xobjectNames.length} image(s) but the watermark appears to be embedded in the image pixels, not as a separate object.
-					Visual detection (coming soon) will handle this type of PDF.
+					Try Visual detection to handle this type of PDF.
 				</p>
 			{/if}
 			{#if uploadedFile && !isProcessing}

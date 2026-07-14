@@ -1,11 +1,7 @@
 import { describe, it, expect } from "vite-plus/test";
 import { floodFillBoundary } from "../flood-fill";
 
-function makeImageData(
-  width: number,
-  height: number,
-  pixels: number[][],
-): Uint8ClampedArray {
+function makeImageData(width: number, height: number, pixels: number[][]): Uint8ClampedArray {
   const data = new Uint8ClampedArray(width * height * 4);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -24,9 +20,7 @@ describe("floodFillBoundary", () => {
   it("returns null for click on white pixel", () => {
     const width = 10;
     const height = 10;
-    const pixels = Array.from({ length: height }, () =>
-      Array(width).fill(255),
-    );
+    const pixels = Array.from({ length: height }, () => Array(width).fill(255));
     const data = makeImageData(width, height, pixels);
     const result = floodFillBoundary(data, width, height, 5, 5, 30);
     expect(result).toBeNull();
@@ -35,9 +29,7 @@ describe("floodFillBoundary", () => {
   it("detects a simple dark rectangle on white background", () => {
     const width = 20;
     const height = 20;
-    const pixels = Array.from({ length: height }, () =>
-      Array(width).fill(255),
-    );
+    const pixels = Array.from({ length: height }, () => Array(width).fill(255));
     // Draw a 6x4 dark block at (5, 5)
     for (let y = 5; y < 9; y++) {
       for (let x = 5; x < 11; x++) {
@@ -56,9 +48,7 @@ describe("floodFillBoundary", () => {
   it("respects tolerance - ignores light gray when tolerance is low", () => {
     const width = 10;
     const height = 10;
-    const pixels = Array.from({ length: height }, () =>
-      Array(width).fill(255),
-    );
+    const pixels = Array.from({ length: height }, () => Array(width).fill(255));
     // Light gray block (240) - luminance 240 > 255-20=235, so considered "white" with tolerance 20
     for (let y = 3; y < 7; y++) {
       for (let x = 3; x < 7; x++) {
@@ -73,9 +63,7 @@ describe("floodFillBoundary", () => {
   it("includes dark gray when tolerance is high enough", () => {
     const width = 10;
     const height = 10;
-    const pixels = Array.from({ length: height }, () =>
-      Array(width).fill(255),
-    );
+    const pixels = Array.from({ length: height }, () => Array(width).fill(255));
     // Dark gray block (100)
     for (let y = 3; y < 7; y++) {
       for (let x = 3; x < 7; x++) {
@@ -94,9 +82,7 @@ describe("floodFillBoundary", () => {
   it("handles L-shaped regions", () => {
     const width = 15;
     const height = 15;
-    const pixels = Array.from({ length: height }, () =>
-      Array(width).fill(255),
-    );
+    const pixels = Array.from({ length: height }, () => Array(width).fill(255));
     // L-shape: horizontal bar + vertical bar
     for (let x = 2; x < 10; x++) pixels[2][x] = 0;
     for (let x = 2; x < 10; x++) pixels[3][x] = 0;
@@ -115,9 +101,7 @@ describe("floodFillBoundary", () => {
   it("clamps bounding box to image bounds", () => {
     const width = 10;
     const height = 10;
-    const pixels = Array.from({ length: height }, () =>
-      Array(width).fill(255),
-    );
+    const pixels = Array.from({ length: height }, () => Array(width).fill(255));
     // Dark pixel at corner
     pixels[0][0] = 0;
     pixels[0][1] = 0;
@@ -135,9 +119,7 @@ describe("floodFillBoundary", () => {
   it("stops at background boundary", () => {
     const width = 20;
     const height = 20;
-    const pixels = Array.from({ length: height }, () =>
-      Array(width).fill(255),
-    );
+    const pixels = Array.from({ length: height }, () => Array(width).fill(255));
     // Two separate dark blocks
     for (let y = 2; y < 6; y++) {
       for (let x = 2; x < 6; x++) pixels[y][x] = 0;
@@ -158,9 +140,7 @@ describe("floodFillBoundary", () => {
   it("handles click on edge of dark region", () => {
     const width = 15;
     const height = 15;
-    const pixels = Array.from({ length: height }, () =>
-      Array(width).fill(255),
-    );
+    const pixels = Array.from({ length: height }, () => Array(width).fill(255));
     for (let y = 5; y < 10; y++) {
       for (let x = 5; x < 10; x++) pixels[y][x] = 0;
     }

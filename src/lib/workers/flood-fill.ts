@@ -1,9 +1,6 @@
 import type { BoundingBox } from "./types";
 
-export function getLuminance(
-  data: Uint8ClampedArray,
-  idx: number,
-): number {
+export function getLuminance(data: Uint8ClampedArray, idx: number): number {
   return data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114;
 }
 
