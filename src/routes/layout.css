@@ -122,3 +122,9 @@
 button {
   -webkit-tap-highlight-color: transparent;
 }
+
+/* Global surface */
+body {
+  background-color: var(--color-surface-ebony);
+  color: var(--color-on-surface);
+}
