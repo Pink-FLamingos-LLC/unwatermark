@@ -254,6 +254,19 @@ async function processPdfVisualInner(pdfBuffer: ArrayBuffer, manualSelection: Bo
   if (!watermarkBox) {
     const pixelData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
     const bgColor = findBackgroundColor(pixelData, canvas.width, canvas.height);
+
+    let nonWhiteCount = 0;
+    let minLum = 255;
+    let maxLum = 0;
+    const sampleStep = 4;
+    for (let i = 0; i < pixelData.length; i += 4 * sampleStep) {
+      const lum = pixelData[i] * 0.299 + pixelData[i + 1] * 0.587 + pixelData[i + 2] * 0.114;
+      if (lum < 245) nonWhiteCount++;
+      if (lum < minLum) minLum = lum;
+      if (lum > maxLum) maxLum = lum;
+    }
+    const totalSampled = Math.floor(pixelData.length / (4 * sampleStep));
+
     post({
       type: "debug",
       info: {
@@ -275,6 +288,7 @@ async function processPdfVisualInner(pdfBuffer: ArrayBuffer, manualSelection: Bo
           bgColor,
           imageFormat: "none",
           imageSizeBytes: 0,
+          diagnostic: `non-white pixels: ${nonWhiteCount}/${totalSampled} sampled, luminance range: ${minLum.toFixed(0)}-${maxLum.toFixed(0)}`,
         },
       },
     });

@@ -443,6 +443,11 @@
 									Image: {debugInfo.visual.imageFormat.toUpperCase()} ({(debugInfo.visual.imageSizeBytes / 1024).toFixed(1)} KB)
 								</div>
 							{/if}
+							{#if debugInfo.visual.diagnostic}
+								<div class="text-on-surface-variant">
+									{debugInfo.visual.diagnostic}
+								</div>
+							{/if}
 						</div>
 					</div>
 				{/if}

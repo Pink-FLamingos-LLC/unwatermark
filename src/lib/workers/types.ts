@@ -39,6 +39,7 @@ export interface VisualDebugInfo {
   bgColor: { r: number; g: number; b: number };
   imageFormat: string;
   imageSizeBytes: number;
+  diagnostic?: string;
 }
 
 export type WorkerProgressMessage = {
