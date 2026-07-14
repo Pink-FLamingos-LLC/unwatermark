@@ -162,6 +162,15 @@ async function paintOverRegion(
 }
 
 async function processPdfVisual(pdfBuffer: ArrayBuffer, manualSelection: BoundingBox | null) {
+  try {
+    await processPdfVisualInner(pdfBuffer, manualSelection);
+  } catch (err) {
+    console.error("[visual-detection] Full error:", err);
+    throw err;
+  }
+}
+
+async function processPdfVisualInner(pdfBuffer: ArrayBuffer, manualSelection: BoundingBox | null) {
   post({ type: "progress", stage: "Loading PDF for visual detection...", percent: 0 });
 
   const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -582,7 +591,9 @@ if (typeof self !== "undefined") {
     try {
       await processPdf(e.data.pdfBuffer, e.data.detectionMethod, e.data.manualSelection);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown error during processing";
+      console.error("[worker] Full error:", err);
+      const message =
+        err instanceof Error ? `${err.message}\n${err.stack}` : "Unknown error during processing";
       post({ type: "error", message });
     }
   };
