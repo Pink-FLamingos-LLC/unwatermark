@@ -191,8 +191,8 @@ async function processPdfVisual(pdfBuffer: ArrayBuffer, manualSelection: Boundin
   const ctx = canvas.getContext("2d") as OffscreenCanvasRenderingContext2D;
 
   await pdfPage.render({
-    canvas: null,
     canvasContext: ctx as unknown as CanvasRenderingContext2D,
+    canvas: canvas as unknown as HTMLCanvasElement,
     viewport,
   }).promise;
 
