@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>Launchpad | Tabletop Companion</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<script>
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+          "secondary-container": "#1e95f2",
+          "surface-container-high": "#282933",
+          "primary-container": "#4caf50",
+          "inverse-surface": "#e3e1ef",
+          "on-tertiary-fixed": "#2c160e",
+          "on-primary": "#00390a",
+          "on-background": "#e3e1ef",
+          "secondary-fixed": "#d1e4ff",
+          "surface-charcoal": "#141625",
+          "on-tertiary": "#442a22",
+          "tertiary-fixed-dim": "#e7bdb1",
+          "surface-dim": "#12131c",
+          "tertiary-container": "#b89388",
+          "surface-ebony": "#0A0B14",
+          "error": "#ffb4ab",
+          "surface-container": "#1e1f29",
+          "surface": "#12131c",
+          "surface-container-highest": "#33343e",
+          "surface-container-lowest": "#0d0e17",
+          "on-secondary-container": "#002b4d",
+          "inverse-primary": "#006e1c",
+          "background": "#12131c",
+          "surface-tint": "#78dc77",
+          "surface-bright": "#383843",
+          "on-tertiary-container": "#472c24",
+          "surface-container-low": "#1a1b24",
+          "on-primary-fixed": "#002204",
+          "on-primary-fixed-variant": "#005313",
+          "secondary": "#9ecaff",
+          "on-error": "#690005",
+          "on-tertiary-fixed-variant": "#5d4037",
+          "inverse-on-surface": "#2f303a",
+          "on-surface": "#e3e1ef",
+          "primary-fixed": "#94f990",
+          "secondary-fixed-dim": "#9ecaff",
+          "on-error-container": "#ffdad6",
+          "primary-fixed-dim": "#78dc77",
+          "on-secondary-fixed": "#001d36",
+          "on-primary-container": "#003c0b",
+          "primary": "#78dc77",
+          "on-surface-variant": "#becab9",
+          "on-secondary": "#003258",
+          "outline": "#899484",
+          "tertiary-fixed": "#ffdbd0",
+          "meeple-red": "#F44336",
+          "on-secondary-fixed-variant": "#00497d",
+          "surface-variant": "#33343e",
+          "wood-dark": "#3E2723",
+          "error-container": "#93000a",
+          "meeple-yellow": "#FFEB3B",
+          "tertiary": "#e7bdb1",
+          "outline-variant": "#3f4a3c"
+        },
+        "borderRadius": {
+          "DEFAULT": "0.25rem",
+          "lg": "0.5rem",
+          "xl": "0.75rem",
+          "full": "9999px"
+        },
+        "spacing": {
+          "gutter-mobile": "12px",
+          "tap-target": "48px",
+          "card-padding": "16px",
+          "base": "8px",
+          "margin-mobile": "16px"
+        },
+        "fontFamily": {
+          "label-lg": ["Inter"],
+          "headline-lg-mobile": ["Inter"],
+          "body-md": ["Inter"],
+          "headline-md": ["Inter"],
+          "headline-lg": ["Inter"],
+          "label-sm": ["Inter"],
+          "body-lg": ["Inter"],
+          "display-lg": ["Inter"]
+        },
+        "fontSize": {
+          "label-lg": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}],
+          "headline-lg-mobile": ["20px", {"lineHeight": "28px", "fontWeight": "700"}],
+          "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+          "headline-md": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+          "headline-lg": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+          "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.04em", "fontWeight": "500"}],
+          "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+          "display-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}]
+        }
+      },
+    },
+  }
+</script>
+<style>
+  body {
+    background-color: #0A0B14;
+    color: #e3e1ef;
+    -webkit-tap-highlight-color: transparent;
+    font-family: 'Inter', sans-serif;
+  }
+  .wood-texture {
+    background-color: #3E2723;
+    background-image: url("https://www.transparenttextures.com/patterns/wood-pattern.png");
+  }
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+</style>
+</head>
+<body class="pb-24 overflow-x-hidden">
+
+<!-- Top App Bar -->
+<header class="bg-surface-ebony text-primary text-headline-lg-mobile font-headline-lg-mobile docked full-width top-0 bg-surface-charcoal border-b border-white/10 shadow-sm flex justify-between items-center w-full px-margin-mobile h-tap-target z-50 sticky top-0">
+  <div class="flex items-center gap-3">
+    <span class="material-symbols-outlined">menu</span>
+    <h1 class="text-headline-lg-mobile font-headline-lg-mobile font-bold text-primary">Tabletop Companion</h1>
+  </div>
+  <button class="w-10 h-10 flex items-center justify-center hover:bg-surface-variant rounded-full transition-colors duration-200">
+    <span class="material-symbols-outlined">search</span>
+  </button>
+</header>
+
+<main class="px-4 py-6 space-y-8 max-w-2xl mx-auto">
+
+  <!-- Section 1: The Active Table -->
+  <section aria-labelledby="active-table-heading">
+    <h2 class="text-label-sm font-label-sm uppercase tracking-widest text-on-surface-variant mb-3 px-1" id="active-table-heading">The Active Table</h2>
+    <div class="wood-texture rounded-xl p-card-padding shadow-2xl relative overflow-hidden group">
+      <div class="absolute top-0 right-0 p-4">
+        <div class="bg-black/40 backdrop-blur-md rounded-full px-3 py-1 flex items-center gap-1.5 border border-white/10">
+          <span class="material-symbols-outlined text-[18px] text-meeple-red animate-pulse">timer</span>
+          <span class="text-label-lg font-label-lg text-white">42m</span>
+        </div>
+      </div>
+      <div class="mb-6">
+        <h3 class="text-display-lg font-display-lg text-white mb-1">Dune: Imperium</h3>
+        <p class="text-body-md font-body-md text-white/70 flex items-center gap-2">
+          <span class="material-symbols-outlined text-primary text-[20px]" style="font-variation-settings: 'FILL' 1;">person</span>
+          Current Turn: <span class="font-bold text-white">Sarah</span>
+        </p>
+      </div>
+      <div class="flex gap-3">
+        <button class="flex-1 bg-primary text-on-primary h-tap-target rounded-lg font-label-lg text-label-lg flex items-center justify-center gap-2 active:scale-95 transition-transform">
+          <span class="material-symbols-outlined">play_arrow</span>
+          Resume
+        </button>
+        <button class="w-tap-target h-tap-target border-2 border-white/20 rounded-lg flex items-center justify-center text-white active:scale-95 transition-transform hover:bg-white/10">
+          <span class="material-symbols-outlined">more_vert</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 2: Global Smart Search -->
+  <section>
+    <div class="relative group">
+      <div class="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+        <span class="material-symbols-outlined text-on-surface-variant group-focus-within:text-secondary">search</span>
+      </div>
+      <input class="w-full h-tap-target bg-surface-charcoal border border-white/10 rounded-xl pl-12 pr-4 text-on-surface focus:outline-none focus:ring-2 focus:ring-secondary/50 focus:border-secondary transition-all placeholder:text-on-surface-variant/50" placeholder="Search games or rules..." type="text"/>
+    </div>
+  </section>
+
+  <!-- Section 3: Swiss Army Tools -->
+  <section>
+    <div class="flex justify-between items-end mb-4 px-1">
+      <h2 class="text-label-sm font-label-sm uppercase tracking-widest text-on-surface-variant">Swiss Army Tools</h2>
+      <button class="text-primary text-label-sm font-label-sm">View All</button>
+    </div>
+    <div class="flex overflow-x-auto gap-4 no-scrollbar pb-2 -mx-4 px-4">
+      <div class="flex flex-col items-center gap-2 group min-w-[72px]">
+        <button class="w-14 h-14 bg-surface-charcoal border border-white/10 rounded-xl flex items-center justify-center text-primary group-active:scale-90 transition-all shadow-lg hover:border-primary/50">
+          <span class="material-symbols-outlined text-[28px]">looks_one</span>
+        </button>
+        <span class="text-label-sm font-label-sm text-on-surface-variant">First Player</span>
+      </div>
+      <div class="flex flex-col items-center gap-2 group min-w-[72px]">
+        <button class="w-14 h-14 bg-surface-charcoal border border-white/10 rounded-xl flex items-center justify-center text-secondary group-active:scale-90 transition-all shadow-lg hover:border-secondary/50">
+          <span class="material-symbols-outlined text-[28px]">casino</span>
+        </button>
+        <span class="text-label-sm font-label-sm text-on-surface-variant">Dice Roller</span>
+      </div>
+      <div class="flex flex-col items-center gap-2 group min-w-[72px]">
+        <button class="w-14 h-14 bg-surface-charcoal border border-white/10 rounded-xl flex items-center justify-center text-meeple-yellow group-active:scale-90 transition-all shadow-lg hover:border-meeple-yellow/50">
+          <span class="material-symbols-outlined text-[28px]">timer</span>
+        </button>
+        <span class="text-label-sm font-label-sm text-on-surface-variant">Timer</span>
+      </div>
+      <div class="flex flex-col items-center gap-2 group min-w-[72px]">
+        <button class="w-14 h-14 bg-surface-charcoal border border-white/10 rounded-xl flex items-center justify-center text-meeple-red group-active:scale-90 transition-all shadow-lg hover:border-meeple-red/50">
+          <span class="material-symbols-outlined text-[28px]">monetization_on</span>
+        </button>
+        <span class="text-label-sm font-label-sm text-on-surface-variant">Coin Flip</span>
+      </div>
+      <div class="flex flex-col items-center gap-2 group min-w-[72px]">
+        <button class="w-14 h-14 bg-surface-charcoal border border-white/10 rounded-xl flex items-center justify-center text-tertiary group-active:scale-90 transition-all shadow-lg hover:border-tertiary/50">
+          <span class="material-symbols-outlined text-[28px]">calculate</span>
+        </button>
+        <span class="text-label-sm font-label-sm text-on-surface-variant">Calculator</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 4: My Shelf -->
+  <section>
+    <div class="flex justify-between items-end mb-4 px-1">
+      <h2 class="text-label-sm font-label-sm uppercase tracking-widest text-on-surface-variant">My Shelf</h2>
+      <button class="text-primary text-label-sm font-label-sm">Manage</button>
+    </div>
+    <div class="grid grid-cols-2 gap-4">
+      <!-- Card 1 -->
+      <div class="bg-surface-charcoal rounded-xl overflow-hidden border border-white/10 shadow-lg flex flex-col group">
+        <div class="relative h-40 w-full">
+          <div class="w-full h-full bg-cover bg-center" data-alt="Wingspan box art" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBEbFvbIlOZla3tSFZmYkhLwUq2ohk3zi-HUvzzM2L7B6sBUj1w98mPNGpUd845CKALnVOFup4ZEk1tskEoWwylAZAMXq5d6VvlexA89nb0_-upwXW5njcm9omiAZFITlKldEpgFsiiStAHL6PPCZK7APN0Nmhkd4rKxJVl8mFanQ6kGltn6L3NJX_k3Own7JOBmpFwkwNpHCu5B0_ggq-16cFV1YQe_MbsTo4zHGdpREcj3fhNf_5TeTzItJ0ffe4Wvbh35eGchbJJ')"></div>
+          <button class="absolute top-2 right-2 w-8 h-8 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all">
+            <span class="material-symbols-outlined text-[18px]">more_vert</span>
+          </button>
+        </div>
+        <div class="p-3">
+          <h4 class="text-label-lg font-label-lg text-on-surface truncate">Wingspan</h4>
+          <div class="flex items-center gap-1 mt-1">
+            <span class="material-symbols-outlined text-[14px] text-meeple-yellow" style="font-variation-settings: 'FILL' 1;">star</span>
+            <span class="text-label-sm font-label-sm text-on-surface-variant">4.8 • 1-5P</span>
+          </div>
+        </div>
+      </div>
+      <!-- Card 2 -->
+      <div class="bg-surface-charcoal rounded-xl overflow-hidden border border-white/10 shadow-lg flex flex-col group">
+        <div class="relative h-40 w-full">
+          <div class="w-full h-full bg-cover bg-center" data-alt="Terraforming Mars box art" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCXf9vFIVGiojeaqN25dhKTAKq1SSqiHi9psTsqLG3CSnmCFw_sXx424-Cm6AQaGFEeLBUZpVeLlfl3YgKx9zRR3pcUSbkgi3kXHZUBzicmO1FOFjaF2GY3Ur2cf8wsQ0_ptbutiUu253Kw8q92wz2x2S_BkoXII1xrfFqMgJgLKrToPPIFddc6epHNyx7TQHRRoq_d5UB_RLaZTv7xELtGIdSI4KcGDzot2NCKpGq70U6EWdbmQDHCIVCwZ6kPBJd_2zaBXdiYM7K3')"></div>
+          <button class="absolute top-2 right-2 w-8 h-8 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all">
+            <span class="material-symbols-outlined text-[18px]">more_vert</span>
+          </button>
+        </div>
+        <div class="p-3">
+          <h4 class="text-label-lg font-label-lg text-on-surface truncate">Terraforming Mars</h4>
+          <div class="flex items-center gap-1 mt-1">
+            <span class="material-symbols-outlined text-[14px] text-meeple-yellow" style="font-variation-settings: 'FILL' 1;">star</span>
+            <span class="text-label-sm font-label-sm text-on-surface-variant">4.9 • 1-5P</span>
+          </div>
+        </div>
+      </div>
+      <!-- Card 3 -->
+      <div class="bg-surface-charcoal rounded-xl overflow-hidden border border-white/10 shadow-lg flex flex-col group">
+        <div class="relative h-40 w-full">
+          <div class="w-full h-full bg-cover bg-center" data-alt="7 Wonders box art" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBsY1Op9oLw_QGy0-Anc_lAHt13tndos07zh4cL5Jw9_sd4dMaC7unYdCxLciPM-kZd8XZNXvrx-jOlGQEwHGvM24sy-48vko1n6TI4SrKF5oIOzoYRXUgXeQeFP6JJMrx2hpMcLM1nZIea7b7E-WhS42x0rGhIvTS32pA9lk3oh673Mdfby0pds1ku3J3hbTdYV-F-_Umc2XzOeOx5S9_OB9Y0d_09EiJ5KYg-ShMQ3bAIQTFAggmvZhvWsAtdNq1ylcrYjhhU59F-')"></div>
+          <button class="absolute top-2 right-2 w-8 h-8 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all">
+            <span class="material-symbols-outlined text-[18px]">more_vert</span>
+          </button>
+        </div>
+        <div class="p-3">
+          <h4 class="text-label-lg font-label-lg text-on-surface truncate">7 Wonders</h4>
+          <div class="flex items-center gap-1 mt-1">
+            <span class="material-symbols-outlined text-[14px] text-meeple-yellow" style="font-variation-settings: 'FILL' 1;">star</span>
+            <span class="text-label-sm font-label-sm text-on-surface-variant">4.7 • 2-7P</span>
+          </div>
+        </div>
+      </div>
+      <!-- Card 4 -->
+      <div class="bg-surface-charcoal rounded-xl overflow-hidden border border-white/10 shadow-lg flex flex-col group">
+        <div class="relative h-40 w-full">
+          <div class="w-full h-full bg-cover bg-center" data-alt="Catan box art" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBbtvx3CnxnD7rMbREi6NPN2UiQxga5Y1DU7Zs2PZt9Gm3_zGsXeQVrHUbw3pZxlmZNdvd_Ljns1lPyQuFPtvYepcS6j9Q0UAQAGEDUOKNakUKkoDdn4-1UaL_uNgER67i8Co7NK8HY3Wz1jWaoS2r61AOwlPuaJs4KZYgyUOoSdWy9FW9t6vnlM61WlRIgicsW0Uh3rB0kGgv2nhE0s006OZtsH3o_Nt-sXnHXRa_jYraB2fEIFZ0Tv72HLdTkLnrLtQFF5PlDQKbO')"></div>
+          <button class="absolute top-2 right-2 w-8 h-8 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center text-white active:scale-90 transition-all">
+            <span class="material-symbols-outlined text-[18px]">more_vert</span>
+          </button>
+        </div>
+        <div class="p-3">
+          <h4 class="text-label-lg font-label-lg text-on-surface truncate">Catan</h4>
+          <div class="flex items-center gap-1 mt-1">
+            <span class="material-symbols-outlined text-[14px] text-meeple-yellow" style="font-variation-settings: 'FILL' 1;">star</span>
+            <span class="text-label-sm font-label-sm text-on-surface-variant">4.5 • 3-4P</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 5: Recent Sessions -->
+  <section class="pb-8">
+    <h2 class="text-label-sm font-label-sm uppercase tracking-widest text-on-surface-variant mb-4 px-1">Recent Sessions</h2>
+    <div class="space-y-3">
+      <div class="bg-surface-charcoal border border-white/5 rounded-xl p-4 flex items-center gap-4 hover:border-white/20 transition-all cursor-pointer">
+        <div class="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-primary flex-shrink-0">
+          <span class="material-symbols-outlined text-[24px]">workspace_premium</span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-body-md font-body-md text-on-surface truncate">
+            <span class="font-bold">Sarah</span> won <span class="text-primary font-bold">Wingspan</span>
+          </p>
+          <p class="text-label-sm font-label-sm text-on-surface-variant mt-0.5">3 days ago • Score: 84 pts</p>
+        </div>
+        <span class="material-symbols-outlined text-on-surface-variant">chevron_right</span>
+      </div>
+      <div class="bg-surface-charcoal border border-white/5 rounded-xl p-4 flex items-center gap-4 hover:border-white/20 transition-all cursor-pointer">
+        <div class="w-12 h-12 rounded-full bg-secondary/20 flex items-center justify-center text-secondary flex-shrink-0">
+          <span class="material-symbols-outlined text-[24px]">emoji_events</span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-body-md font-body-md text-on-surface truncate">
+            <span class="font-bold">Alex</span> won <span class="text-secondary font-bold">Dune: Imperium</span>
+          </p>
+          <p class="text-label-sm font-label-sm text-on-surface-variant mt-0.5">5 days ago • 12 VPs</p>
+        </div>
+        <span class="material-symbols-outlined text-on-surface-variant">chevron_right</span>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- Bottom Navigation -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-16 px-2 pb-safe bg-surface-charcoal border-t border-white/10 shadow-[0_-4px_12px_rgba(0,0,0,0.5)] rounded-t-xl">
+  <button class="flex flex-col items-center justify-center bg-secondary-container text-on-secondary-container rounded-full px-4 py-1 active:scale-95 transition-transform duration-150">
+    <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">casino</span>
+    <span class="text-label-sm font-label-sm">Table</span>
+  </button>
+  <button class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary active:scale-95 transition-transform duration-150">
+    <span class="material-symbols-outlined">shelves</span>
+    <span class="text-label-sm font-label-sm">Shelf</span>
+  </button>
+  <button class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary active:scale-95 transition-transform duration-150">
+    <span class="material-symbols-outlined">construction</span>
+    <span class="text-label-sm font-label-sm">Tools</span>
+  </button>
+  <button class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary active:scale-95 transition-transform duration-150">
+    <span class="material-symbols-outlined">history</span>
+    <span class="text-label-sm font-label-sm">History</span>
+  </button>
+</nav>
+
+<script>
+  document.querySelectorAll('button').forEach(button => {
+    button.addEventListener('touchstart', () => button.classList.add('opacity-80'));
+    button.addEventListener('touchend', () => button.classList.remove('opacity-80'));
+  });
+
+  const searchInput = document.querySelector('input');
+  const placeholders = ['Search games or rules...', 'Find a dice tool...', 'Look up a Catan rule...', 'Search your shelf...'];
+  let i = 0;
+  setInterval(() => {
+    i = (i + 1) % placeholders.length;
+    if (document.activeElement !== searchInput) searchInput.placeholder = placeholders[i];
+  }, 4000);
+</script>
+
+</body>
+</html>

@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+@theme {
+  /* Surfaces */
+  --color-surface-ebony: #0A0B14;
+  --color-surface-charcoal: #141625;
+  --color-surface: #12131c;
+  --color-surface-dim: #12131c;
+  --color-surface-bright: #383843;
+  --color-surface-container-lowest: #0d0e17;
+  --color-surface-container-low: #1a1b24;
+  --color-surface-container: #1e1f29;
+  --color-surface-container-high: #282933;
+  --color-surface-container-highest: #33343e;
+  --color-surface-variant: #33343e;
+  --color-surface-tint: #78dc77;
+
+  /* Text */
+  --color-on-surface: #e3e1ef;
+  --color-on-surface-variant: #becab9;
+  --color-on-background: #e3e1ef;
+  --color-inverse-surface: #e3e1ef;
+  --color-inverse-on-surface: #2f303a;
+
+  /* Primary */
+  --color-primary: #78dc77;
+  --color-on-primary: #00390a;
+  --color-primary-container: #4caf50;
+  --color-on-primary-container: #003c0b;
+  --color-inverse-primary: #006e1c;
+  --color-primary-fixed: #94f990;
+  --color-primary-fixed-dim: #78dc77;
+  --color-on-primary-fixed: #002204;
+  --color-on-primary-fixed-variant: #005313;
+
+  /* Secondary */
+  --color-secondary: #9ecaff;
+  --color-on-secondary: #003258;
+  --color-secondary-container: #1e95f2;
+  --color-on-secondary-container: #002b4d;
+  --color-secondary-fixed: #d1e4ff;
+  --color-secondary-fixed-dim: #9ecaff;
+  --color-on-secondary-fixed: #001d36;
+  --color-on-secondary-fixed-variant: #00497d;
+
+  /* Tertiary */
+  --color-tertiary: #e7bdb1;
+  --color-on-tertiary: #442a22;
+  --color-tertiary-container: #b89388;
+  --color-on-tertiary-container: #472c24;
+  --color-tertiary-fixed: #ffdbd0;
+  --color-tertiary-fixed-dim: #e7bdb1;
+  --color-on-tertiary-fixed: #2c160e;
+  --color-on-tertiary-fixed-variant: #5d4037;
+
+  /* Error */
+  --color-error: #ffb4ab;
+  --color-on-error: #690005;
+  --color-error-container: #93000a;
+  --color-on-error-container: #ffdad6;
+
+  /* Meeple Named */
+  --color-meeple-red: #F44336;
+  --color-meeple-yellow: #FFEB3B;
+
+  /* Structural */
+  --color-wood-dark: #3E2723;
+  --color-outline: #899484;
+  --color-outline-variant: #3f4a3c;
+
+  /* Spacing */
+  --spacing-gutter-mobile: 12px;
+  --spacing-tap-target: 48px;
+  --spacing-card-padding: 16px;
+  --spacing-margin-mobile: 16px;
+
+  /* Border Radius */
+  --radius-sm: 0.25rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-full: 9999px;
+
+  /* Font Sizes */
+  --font-size-display-lg: 32px;
+  --font-size-headline-lg: 24px;
+  --font-size-headline-lg-mobile: 20px;
+  --font-size-headline-md: 20px;
+  --font-size-body-lg: 18px;
+  --font-size-body-md: 16px;
+  --font-size-label-lg: 14px;
+  --font-size-label-sm: 12px;
+
+  /* Font Families */
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Animations */
+  --animate-pulse: pulse 2s ease-in-out infinite;
+}
+
+/* Wood texture utility */
+.wood-texture {
+  background-color: #3E2723;
+  background-image: url("https://www.transparenttextures.com/patterns/wood-pattern.png");
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Pulsing timer animation */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Remove tap highlight on buttons */
+button {
+  -webkit-tap-highlight-color: transparent;
+}
