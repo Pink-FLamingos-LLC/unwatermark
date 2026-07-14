@@ -221,11 +221,31 @@ async function processPdfVisualInner(pdfBuffer: ArrayBuffer, manualSelection: Bo
   const canvas = new OffscreenCanvas(Math.round(viewport.width), Math.round(viewport.height));
   const ctx = canvas.getContext("2d") as OffscreenCanvasRenderingContext2D;
 
+  ctx.fillStyle = "rgb(128, 128, 128)";
+  ctx.fillRect(0, 0, 10, 10);
+
   await pdfPage.render({
+    canvas: null,
     canvasContext: ctx as unknown as CanvasRenderingContext2D,
-    canvas: canvas as unknown as HTMLCanvasElement,
     viewport,
   }).promise;
+
+  const testPixel = ctx.getImageData(5, 5, 1, 1).data;
+  const postRenderPixel = ctx.getImageData(100, 100, 1, 1).data;
+  console.log(
+    "[visual] post-render test pixel (5,5):",
+    testPixel[0],
+    testPixel[1],
+    testPixel[2],
+    testPixel[3],
+  );
+  console.log(
+    "[visual] post-render content pixel (100,100):",
+    postRenderPixel[0],
+    postRenderPixel[1],
+    postRenderPixel[2],
+    postRenderPixel[3],
+  );
 
   post({ type: "progress", stage: "Analyzing image pixels...", percent: 40 });
 
