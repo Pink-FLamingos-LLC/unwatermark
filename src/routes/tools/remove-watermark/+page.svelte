@@ -111,7 +111,15 @@
 	{/if}
 
 	{#if error}
-		<p class="text-label-sm text-on-error-container bg-error-container px-3 py-2 rounded-lg mt-2" role="alert">{error}</p>
+		<div class="bg-error-container border border-error/30 rounded-xl p-4 mt-2" role="alert">
+			<p class="text-label-sm text-on-error-container mb-2">{error}</p>
+			{#if debugInfo && debugInfo.xobjectNames.length > 0 && debugInfo.imagePlacements.length === 0}
+				<p class="text-label-sm text-on-error-container/80">
+					This PDF has {debugInfo.xobjectNames.length} image(s) but the watermark appears to be embedded in the image pixels, not as a separate object.
+					Visual detection (coming soon) will handle this type of PDF.
+				</p>
+			{/if}
+		</div>
 	{/if}
 
 	<div class="mt-4">
