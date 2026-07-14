@@ -2,7 +2,7 @@
 
 @theme {
   /* Surfaces */
-  --color-surface-ebony: #0A0B14;
+  --color-surface-ebony: #0a0b14;
   --color-surface-charcoal: #141625;
   --color-surface: #12131c;
   --color-surface-dim: #12131c;
@@ -60,11 +60,11 @@
   --color-on-error-container: #ffdad6;
 
   /* Meeple Named */
-  --color-meeple-red: #F44336;
-  --color-meeple-yellow: #FFEB3B;
+  --color-meeple-red: #f44336;
+  --color-meeple-yellow: #ffeb3b;
 
   /* Structural */
-  --color-wood-dark: #3E2723;
+  --color-wood-dark: #3e2723;
   --color-outline: #899484;
   --color-outline-variant: #3f4a3c;
 
@@ -99,7 +99,7 @@
 
 /* Wood texture utility */
 .wood-texture {
-  background-color: #3E2723;
+  background-color: #3e2723;
   background-image: url("https://www.transparenttextures.com/patterns/wood-pattern.png");
 }
 
@@ -114,8 +114,13 @@
 
 /* Pulsing timer animation */
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 /* Remove tap highlight on buttons */
