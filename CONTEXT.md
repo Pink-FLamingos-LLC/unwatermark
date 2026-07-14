@@ -17,7 +17,7 @@ The algorithm used to identify which image object on the page is the watermark. 
 _Avoid_: Strategy, approach, mode
 
 **Structural Detection (Method B)**:
-Parses the PDF's image XObjects and their bounding boxes. Identifies the card grid as a large clustered group of rectangular images, then isolates any remaining image as the watermark. Default method.
+Parses the PDF's image XObjects and their bounding boxes. Identifies the card grid as a large clustered group of rectangular images, then isolates any remaining image as the watermark. Default method. Only works when the watermark is a separate XObject — does not work when the watermark is embedded (baked) into the card image pixels.
 _Avoid_: PDF parsing, object-level detection
 
 **Visual Detection (Method A)**:

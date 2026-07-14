@@ -10,6 +10,8 @@ interface PDFStreamLike {
 }
 
 interface PDFPageNode {
+  normalize?(): void;
+  get?(key: unknown): unknown;
   Resources():
     | {
         get(
@@ -92,6 +94,7 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
 
   const page = pages[0];
   const pageNode = page.node as unknown as PDFPageNode;
+  pageNode.normalize?.();
 
   const mediaBox = pageNode.MediaBox();
   const pageWidth = Number(mediaBox.get(2));
@@ -173,9 +176,31 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
     }
   }
 
-  const contents = pageNode.Contents();
+  let contents = pageNode.Contents();
   let contentStr = "";
   let contentsInfo = "none";
+
+  if (!contents && pageNode.get) {
+    const rawContents = pageNode.get(pdfDoc.context.obj("/Contents"));
+    if (rawContents && typeof rawContents === "object" && "getUnencodedContents" in rawContents) {
+      contents = rawContents as PDFStreamLike;
+      contentsInfo = "fallback-direct";
+    } else if (rawContents && typeof rawContents === "object" && "get" in rawContents) {
+      const arr = rawContents as { get(index: number): unknown; size?(): number };
+      const len = arr.size?.() ?? 0;
+      const streams: PDFStreamLike[] = [];
+      for (let i = 0; i < len; i++) {
+        const ref = arr.get(i);
+        if (ref && typeof ref === "object" && "getUnencodedContents" in ref) {
+          streams.push(ref as PDFStreamLike);
+        }
+      }
+      if (streams.length > 0) {
+        contents = streams;
+        contentsInfo = `fallback-array(${streams.length})`;
+      }
+    }
+  }
 
   if (contents) {
     if (Array.isArray(contents)) {
