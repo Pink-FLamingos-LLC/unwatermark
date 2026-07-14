@@ -84,7 +84,7 @@ export function removeWatermarkFromContentStream(content: string, watermarkName:
 async function processPdf(pdfBuffer: ArrayBuffer) {
   post({ type: "progress", stage: "Loading PDF...", percent: 0 });
 
-  const pdfDoc = await PDFDocument.load(pdfBuffer);
+  const pdfDoc = await PDFDocument.load(pdfBuffer, { parseSpeed: 0 });
   const pages = pdfDoc.getPages();
 
   if (pages.length === 0) {
