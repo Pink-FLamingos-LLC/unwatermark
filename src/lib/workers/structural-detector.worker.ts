@@ -14,13 +14,11 @@ interface PDFPageNode {
   get?(key: unknown): unknown;
   Resources():
     | {
-        get(
-          key: unknown,
-        ): { entries?(): Iterable<[unknown, unknown]>; delete?(key: unknown): void } | undefined;
+        get(key: unknown): { entries?(): Iterable<[unknown, unknown]>; delete?(key: unknown): void } | undefined;
         entries?(): Iterable<[unknown, unknown]>;
       }
     | undefined;
-  Contents(): PDFStreamLike | PDFStreamLike[] | undefined;
+  Contents(): unknown;
   set(key: unknown, value: unknown): void;
   MediaBox(): { get(index: number): number };
 }
@@ -28,6 +26,7 @@ interface PDFPageNode {
 function post(msg: WorkerMessage) {
   postMessage(msg);
 }
+
 function decodePdfName(raw: unknown): string {
   const rawName = raw as string | { decodeText?(): string };
   const name =
@@ -77,8 +76,31 @@ export function removeWatermarkFromContentStream(content: string, watermarkName:
   }
 
   result.push(...pending);
-
   return result.join("\n");
+}
+
+function resolveStream(pdfDoc: PDFDocument, obj: unknown): PDFStreamLike | null {
+  if (!obj || typeof obj !== "object") return null;
+  if ("getUnencodedContents" in obj || "getContents" in obj) return obj as PDFStreamLike;
+  try {
+    const resolved = (pdfDoc.context as any).lookupMaybe?.(obj);
+    if (resolved && typeof resolved === "object" && ("getUnencodedContents" in resolved || "getContents" in resolved)) {
+      return resolved as PDFStreamLike;
+    }
+  } catch { /* */ }
+  return null;
+}
+
+function readStreamBytes(stream: PDFStreamLike): Uint8Array | null {
+  try {
+    const bytes = stream.getUnencodedContents?.();
+    if (bytes && bytes.length > 0) return bytes;
+  } catch { /* */ }
+  try {
+    const bytes = stream.getContents?.();
+    if (bytes && bytes.length > 0) return bytes;
+  } catch { /* */ }
+  return null;
 }
 
 async function processPdf(pdfBuffer: ArrayBuffer) {
@@ -122,15 +144,9 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
     post({
       type: "debug",
       info: {
-        pageCount: pages.length,
-        pageWidth,
-        pageHeight,
-        resources: debugResources,
-        xobjectNames: [],
-        xobjectTypes: {},
-        contentStreamLength: 0,
-        imagePlacements: [],
-        detectionResult: null,
+        pageCount: pages.length, pageWidth, pageHeight,
+        resources: debugResources, xobjectNames: [], xobjectTypes: {},
+        contentStreamLength: 0, imagePlacements: [], detectionResult: null,
       },
     });
     post({ type: "error", message: "Page has no resources" });
@@ -150,15 +166,9 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
     post({
       type: "debug",
       info: {
-        pageCount: pages.length,
-        pageWidth,
-        pageHeight,
-        resources: debugResources,
-        xobjectNames: [],
-        xobjectTypes: {},
-        contentStreamLength: 0,
-        imagePlacements: [],
-        detectionResult: null,
+        pageCount: pages.length, pageWidth, pageHeight,
+        resources: debugResources, xobjectNames: [], xobjectTypes: {},
+        contentStreamLength: 0, imagePlacements: [], detectionResult: null,
       },
     });
     post({ type: "error", message: "No XObjects found on page" });
@@ -177,86 +187,75 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
     if (value && typeof value === "object") {
       const dict = value as { get?(key: unknown): unknown };
       const subtype = dict.get?.("/Subtype");
-      const subtypeStr = subtype ? decodePdfName(subtype) : "unknown";
-      xobjectTypes[cleanName] = subtypeStr;
+      xobjectTypes[cleanName] = subtype ? decodePdfName(subtype) : "unknown";
     } else {
       xobjectTypes[cleanName] = "unknown";
     }
   }
 
-  let contents = pageNode.Contents();
-  let contentStr = "";
+  // Resolve Contents — may be a PDFArray with indirect refs, a single stream, or undefined
+  let contentsRaw = pageNode.Contents();
+  let resolvedStreams: PDFStreamLike[] = [];
   let contentsInfo = "none";
 
-  if (!contents && pageNode.get) {
-    const rawContents = pageNode.get(pdfDoc.context.obj("/Contents"));
-    if (rawContents && typeof rawContents === "object" && "getUnencodedContents" in rawContents) {
-      contents = rawContents as PDFStreamLike;
-      contentsInfo = "fallback-direct";
-    } else if (rawContents && typeof rawContents === "object" && "get" in rawContents) {
-      const arr = rawContents as { get(index: number): unknown; size?(): number };
-      const len = arr.size?.() ?? 0;
-      const streams: PDFStreamLike[] = [];
-      for (let i = 0; i < len; i++) {
-        const ref = arr.get(i);
-        if (ref && typeof ref === "object" && "getUnencodedContents" in ref) {
-          streams.push(ref as PDFStreamLike);
-        }
+  if (contentsRaw && typeof contentsRaw === "object" && "size" in contentsRaw && "get" in contentsRaw) {
+    // PDFArray — resolve each element
+    const arr = contentsRaw as { size(): number; get(index: number): unknown };
+    contentsInfo = `array(${arr.size()})`;
+    for (let i = 0; i < arr.size(); i++) {
+      const stream = resolveStream(pdfDoc, arr.get(i));
+      if (stream) resolvedStreams.push(stream);
+    }
+  } else if (contentsRaw) {
+    const stream = resolveStream(pdfDoc, contentsRaw);
+    if (stream) {
+      resolvedStreams.push(stream);
+      contentsInfo = "single stream";
+    }
+  }
+
+  // Fallback: try direct dict access
+  if (resolvedStreams.length === 0 && pageNode.get) {
+    const raw = pageNode.get(pdfDoc.context.obj("/Contents"));
+    if (raw && typeof raw === "object" && "size" in raw && "get" in raw) {
+      const arr = raw as { size(): number; get(index: number): unknown };
+      contentsInfo = `fallback-array(${arr.size()})`;
+      for (let i = 0; i < arr.size(); i++) {
+        const stream = resolveStream(pdfDoc, arr.get(i));
+        if (stream) resolvedStreams.push(stream);
       }
-      if (streams.length > 0) {
-        contents = streams;
-        contentsInfo = `fallback-array(${streams.length})`;
+    } else {
+      const stream = resolveStream(pdfDoc, raw);
+      if (stream) {
+        resolvedStreams.push(stream);
+        contentsInfo = "fallback-direct";
       }
     }
   }
 
-  if (contents) {
-    if (Array.isArray(contents)) {
-      contentsInfo = `array(${contents.length})`;
-      for (const stream of contents) {
-        let bytes: Uint8Array | undefined;
-        try { bytes = stream.getUnencodedContents?.(); } catch { /* */ }
-        if (!bytes) { try { bytes = stream.getContents?.(); } catch { /* */ } }
-        if (bytes && bytes.length > 0) {
-          contentStr += new TextDecoder().decode(bytes) + "\n";
-        }
-      }
-    } else {
-      let bytes: Uint8Array | undefined;
-      try { bytes = contents.getUnencodedContents?.(); } catch { /* */ }
-      if (!bytes) { try { bytes = contents.getContents?.(); } catch { /* */ } }
-      if (bytes && bytes.length > 0) {
-        contentsInfo = `single stream (${bytes.length} bytes)`;
-        contentStr = new TextDecoder().decode(bytes);
-      } else {
-        const streamObj = contents as Record<string, unknown>;
-        const keys = Object.keys(streamObj).concat(Object.getOwnPropertyNames(Object.getPrototypeOf(streamObj)));
-        contentsInfo = `single stream (0 bytes, keys: ${keys.join(",")})`;
-
-        if (contents.dict) {
-          const dict = contents.dict;
-          const lenVal = dict.get?.("/Length") as { asNumber?(): number } | undefined;
-          const filterVal = dict.get?.("/Filter");
-          contentsInfo += `, Length=${lenVal?.asNumber?.() ?? "unknown"}`;
-          contentsInfo += `, Filter=${filterVal ?? "unknown"}`;
-        }
-      }
+  // Read bytes from resolved streams
+  let contentStr = "";
+  for (const stream of resolvedStreams) {
+    const bytes = readStreamBytes(stream);
+    if (bytes) {
+      contentStr += new TextDecoder().decode(bytes) + "\n";
     }
+  }
+
+  if (!contentStr && resolvedStreams.length > 0) {
+    const stream = resolvedStreams[0];
+    const keys = Object.getOwnPropertyNames(Object.getPrototypeOf(stream));
+    contentsInfo += ` (0 bytes, proto keys: ${keys.join(",")})`;
   }
 
   if (!contentStr) {
     post({
       type: "debug",
       info: {
-        pageCount: pages.length,
-        pageWidth,
-        pageHeight,
+        pageCount: pages.length, pageWidth, pageHeight,
         resources: { ...debugResources, _contents: [contentsInfo] },
-        xobjectNames,
-        xobjectTypes,
-        contentStreamLength: 0,
-        imagePlacements: [],
-        detectionResult: null,
+        xobjectNames, xobjectTypes,
+        contentStreamLength: 0, imagePlacements: [], detectionResult: null,
       },
     });
     post({ type: "error", message: "Could not read page content stream (Contents: " + contentsInfo + ", XObjects found: " + xobjectNames.length + ")" });
@@ -267,32 +266,17 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
 
   const images: ImagePlacement[] = parseContentStream(contentStr, new Set(xobjectNames));
 
-  const detectionResult =
-    images.length > 0
-      ? (() => {
-          const watermark = detectWatermark(images);
-          const gridImages = images.filter((img) => img !== watermark);
-          return {
-            watermark: watermark?.box ?? null,
-            images,
-            gridImages,
-          };
-        })()
-      : null;
+  const detectionResult = images.length > 0 ? (() => {
+    const watermark = detectWatermark(images);
+    const gridImages = images.filter((img) => img !== watermark);
+    return { watermark: watermark?.box ?? null, images, gridImages };
+  })() : null;
 
-  const debugInfo: PdfDebugInfo = {
-    pageCount: pages.length,
-    pageWidth,
-    pageHeight,
-    resources: debugResources,
-    xobjectNames,
-    xobjectTypes,
-    contentStreamLength: contentStr.length,
-    imagePlacements: images,
-    detectionResult,
-  };
-
-  post({ type: "debug", info: debugInfo });
+  post({ type: "debug", info: {
+    pageCount: pages.length, pageWidth, pageHeight,
+    resources: debugResources, xobjectNames, xobjectTypes,
+    contentStreamLength: contentStr.length, imagePlacements: images, detectionResult,
+  }});
 
   if (images.length === 0) {
     post({ type: "error", message: "No images found on page" });
@@ -300,7 +284,6 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
   }
 
   const watermark = detectWatermark(images);
-
   if (!watermark) {
     post({ type: "error", message: "No watermark detected" });
     return;
@@ -309,38 +292,24 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
   post({ type: "progress", stage: "Removing watermark...", percent: 60 });
 
   const watermarkName = watermark.name;
-
   xobjectDict.delete?.(pdfDoc.context.obj(`/${watermarkName}`));
 
   const cleanedContent = removeWatermarkFromContentStream(contentStr, watermarkName);
 
-  if (contents) {
-    const streams = Array.isArray(contents) ? contents : [contents];
-    for (const stream of streams) {
-      if (stream.dict) {
-        const encoder = new TextEncoder();
-        const newBytes = encoder.encode(cleanedContent);
-
-        const newStream = pdfDoc.context.stream(newBytes, {
-          Type: "XObject",
-          Subtype: "Form",
-        });
-
-        const streamRef = pdfDoc.context.register(newStream);
-        pageNode.set(pdfDoc.context.obj("Contents"), pdfDoc.context.obj([streamRef]));
-        break;
-      }
+  if (resolvedStreams.length > 0) {
+    const stream = resolvedStreams[0];
+    if (stream.dict) {
+      const encoder = new TextEncoder();
+      const newBytes = encoder.encode(cleanedContent);
+      const newStream = pdfDoc.context.stream(newBytes, { Type: "XObject", Subtype: "Form" });
+      const streamRef = pdfDoc.context.register(newStream);
+      pageNode.set(pdfDoc.context.obj("Contents"), pdfDoc.context.obj([streamRef]));
     }
   }
 
   post({ type: "progress", stage: "Saving PDF...", percent: 80 });
-
   const processedPdf = await pdfDoc.save();
-
-  post({
-    type: "result",
-    processedPdf,
-  });
+  post({ type: "result", processedPdf });
 }
 
 if (typeof self !== "undefined") {
