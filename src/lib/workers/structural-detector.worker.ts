@@ -137,7 +137,15 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
     return;
   }
 
-  const xobjectDict = resources.get(pdfDoc.context.obj("/XObject"));
+  let xobjectDict = resources.get(pdfDoc.context.obj("/XObject"));
+  if (!xobjectDict && resources.entries) {
+    for (const [key, value] of resources.entries()) {
+      if (decodePdfName(key) === "XObject") {
+        xobjectDict = value as { entries?(): Iterable<[unknown, unknown]>; delete?(key: unknown): void };
+        break;
+      }
+    }
+  }
   if (!xobjectDict) {
     post({
       type: "debug",
