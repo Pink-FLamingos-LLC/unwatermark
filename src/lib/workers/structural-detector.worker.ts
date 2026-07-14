@@ -430,7 +430,7 @@ async function processPdf(pdfBuffer: ArrayBuffer, detectionMethod: DetectionMeth
 
 if (typeof self !== "undefined") {
   self.onmessage = async (
-    e: MessageEvent<{ pdfBuffer: ArrayBuffer; detectionMethod: DetectionMethod }>,
+    e: MessageEvent<{ pdfBuffer: ArrayBuffer; detectionMethod: DetectionMethod; manualSelection?: import("./types").BoundingBox | null }>,
   ) => {
     try {
       await processPdf(e.data.pdfBuffer, e.data.detectionMethod);

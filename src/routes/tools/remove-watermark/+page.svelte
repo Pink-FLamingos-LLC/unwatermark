@@ -1,7 +1,8 @@
 <script lang="ts">
 	import Dropzone from '$lib/components/Dropzone.svelte';
 	import DetectionMethodSelector from '$lib/components/DetectionMethodSelector.svelte';
-	import type { WorkerMessage, PdfDebugInfo, DetectionMethod } from '$lib/workers/types';
+	import HighlightCanvas from '$lib/components/HighlightCanvas.svelte';
+	import type { WorkerMessage, PdfDebugInfo, DetectionMethod, BoundingBox } from '$lib/workers/types';
 
 	let stage = $state<string | null>(null);
 	let percent = $state(0);
@@ -12,6 +13,10 @@
 	let debugInfo = $state<PdfDebugInfo | null>(null);
 	let detectionMethod = $state<DetectionMethod>('structural');
 	let uploadedFile = $state<File | null>(null);
+	let advancedMode = $state(false);
+	let manualSelection = $state<BoundingBox | null>(null);
+	let pdfPageWidth = $state(612);
+	let pdfPageHeight = $state(792);
 
 	function deriveCleanFilename(originalName: string): string {
 		const lastDot = originalName.lastIndexOf('.');
@@ -43,12 +48,16 @@
 
 	function handleMethodChange(method: DetectionMethod) {
 		detectionMethod = method;
-		if (uploadedFile && error) {
+		if (method !== 'visual') {
+			advancedMode = false;
+			manualSelection = null;
+		}
+		if (uploadedFile && error && method === 'structural') {
 			processFile(uploadedFile);
 		}
 	}
 
-	async function processFile(file: File) {
+	async function processFile(file: File, selection?: BoundingBox) {
 		error = null;
 		debugInfo = null;
 		isProcessing = true;
@@ -85,12 +94,35 @@
 			resetState();
 		};
 
-		w.postMessage({ pdfBuffer, detectionMethod });
+		w.postMessage({ pdfBuffer, detectionMethod, manualSelection: selection ?? null });
 	}
 
 	async function handleFile(file: File) {
 		uploadedFile = file;
+		error = null;
+		manualSelection = null;
+		if (detectionMethod === 'visual' && advancedMode) {
+			return;
+		}
 		processFile(file);
+	}
+
+	function handleSelection(box: BoundingBox) {
+		manualSelection = box;
+	}
+
+	function handleSelectionClear() {
+		manualSelection = null;
+	}
+
+	function handlePageDimensions(width: number, height: number) {
+		pdfPageWidth = width;
+		pdfPageHeight = height;
+	}
+
+	function processWithSelection() {
+		if (!uploadedFile || !manualSelection) return;
+		processFile(uploadedFile, manualSelection);
 	}
 </script>
 
@@ -127,6 +159,37 @@
 			<div class="mt-4">
 				<DetectionMethodSelector selected={detectionMethod} onchange={handleMethodChange} />
 			</div>
+			{#if detectionMethod === 'visual'}
+				<div class="mt-4">
+					<label class="flex items-center gap-2 cursor-pointer">
+						<input type="checkbox" bind:checked={advancedMode} class="w-5 h-5 accent-primary" />
+						<span class="text-label-lg text-on-surface-variant">Advanced mode</span>
+					</label>
+					<p class="text-label-sm text-on-surface-variant/70 mt-1 ml-7">
+						Manually highlight the watermark region on the rendered page.
+					</p>
+				</div>
+			{/if}
+			{#if advancedMode && detectionMethod === 'visual'}
+				<div class="mt-4">
+					<HighlightCanvas
+						pdfFile={uploadedFile}
+						pageWidth={pdfPageWidth}
+						pageHeight={pdfPageHeight}
+						onselect={handleSelection}
+						onclear={handleSelectionClear}
+						onpagedimensions={handlePageDimensions}
+					/>
+				</div>
+				{#if manualSelection}
+					<button
+						class="mt-4 w-full h-12 bg-primary text-on-primary rounded-lg text-label-lg font-semibold active:scale-95 transition-transform"
+						onclick={processWithSelection}
+					>
+						Process
+					</button>
+				{/if}
+			{/if}
 		{/if}
 	{/if}
 
