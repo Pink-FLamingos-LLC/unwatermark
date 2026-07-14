@@ -284,7 +284,8 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
   post({ type: "debug", info: {
     pageCount: pages.length, pageWidth, pageHeight,
     resources: debugResources, xobjectNames, xobjectTypes,
-    contentStreamLength: contentStr.length, imagePlacements: images, detectionResult,
+    contentStreamLength: contentStr.length, contentStreamRaw: contentStr,
+    imagePlacements: images, detectionResult,
   }});
 
   if (images.length === 0) {

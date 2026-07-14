@@ -145,6 +145,9 @@
 				<div>
 					<span class="text-on-surface-variant">Content stream:</span>
 					<span class="text-on-surface ml-2">{debugInfo.contentStreamLength} chars</span>
+					{#if debugInfo.contentStreamRaw}
+						<pre class="mt-1 p-2 bg-surface-container rounded text-label-sm text-on-surface-variant overflow-x-auto">{debugInfo.contentStreamRaw}</pre>
+					{/if}
 				</div>
 
 				{#if Object.keys(debugInfo.resources).length > 0}
