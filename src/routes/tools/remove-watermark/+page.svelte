@@ -415,6 +415,31 @@
 						</div>
 					</div>
 				{/if}
+
+				{#if debugInfo.visual}
+					<div>
+						<span class="text-on-surface-variant">Visual Detection:</span>
+						<div class="ml-4 space-y-1">
+							<div class="text-on-surface">
+								Method: <span class="text-primary">{debugInfo.visual.detectionMethod}</span>
+							</div>
+							<div class="text-on-surface-variant">
+								Canvas: {debugInfo.visual.canvasWidth} x {debugInfo.visual.canvasHeight}
+							</div>
+							<div class="text-on-surface">
+								Watermark: ({debugInfo.visual.watermarkBox.x}, {debugInfo.visual.watermarkBox.y}) {debugInfo.visual.watermarkBox.width}x{debugInfo.visual.watermarkBox.height}
+							</div>
+							<div class="text-on-surface-variant">
+								Background: rgb({debugInfo.visual.bgColor.r}, {debugInfo.visual.bgColor.g}, {debugInfo.visual.bgColor.b})
+							</div>
+							{#if debugInfo.visual.imageFormat !== 'pending'}
+								<div class="text-on-surface-variant">
+									Image: {debugInfo.visual.imageFormat.toUpperCase()} ({(debugInfo.visual.imageSizeBytes / 1024).toFixed(1)} KB)
+								</div>
+							{/if}
+						</div>
+					</div>
+				{/if}
 			</div>
 		</div>
 	{/if}

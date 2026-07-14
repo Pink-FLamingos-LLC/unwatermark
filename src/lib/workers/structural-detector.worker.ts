@@ -260,11 +260,37 @@ async function processPdfVisualInner(pdfBuffer: ArrayBuffer, manualSelection: Bo
 
   const pixelData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
   const bgColor = findBackgroundColor(pixelData, canvas.width, canvas.height);
+
+  post({
+    type: "debug",
+    info: {
+      pageCount: pages.length,
+      pageWidth,
+      pageHeight,
+      resources: {},
+      xobjectNames: [],
+      xobjectTypes: {},
+      contentStreamLength: 0,
+      imagePlacements: [],
+      detectionResult: null,
+      visual: {
+        detectionMethod: manualSelection ? "manual" : "automatic",
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height,
+        watermarkBox,
+        bgColor,
+        imageFormat: "pending",
+        imageSizeBytes: 0,
+      },
+    },
+  });
+
   await paintOverRegion(canvas, watermarkBox, bgColor);
 
   post({ type: "progress", stage: "Encoding modified image...", percent: 70 });
 
   let imageBytes: Uint8Array;
+  let imageFormat = "jpeg";
   try {
     const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.92 });
     const buf = await blob.arrayBuffer();
@@ -273,7 +299,32 @@ async function processPdfVisualInner(pdfBuffer: ArrayBuffer, manualSelection: Bo
     const blob = await canvas.convertToBlob({ type: "image/png" });
     const buf = await blob.arrayBuffer();
     imageBytes = new Uint8Array(buf);
+    imageFormat = "png";
   }
+
+  post({
+    type: "debug",
+    info: {
+      pageCount: pages.length,
+      pageWidth,
+      pageHeight,
+      resources: {},
+      xobjectNames: [],
+      xobjectTypes: {},
+      contentStreamLength: 0,
+      imagePlacements: [],
+      detectionResult: null,
+      visual: {
+        detectionMethod: manualSelection ? "manual" : "automatic",
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height,
+        watermarkBox,
+        bgColor,
+        imageFormat,
+        imageSizeBytes: imageBytes.length,
+      },
+    },
+  });
 
   post({ type: "progress", stage: "Building new PDF...", percent: 80 });
 

@@ -27,6 +27,17 @@ export interface PdfDebugInfo {
   contentStreamRaw?: string;
   imagePlacements: ImagePlacement[];
   detectionResult: DetectionResult | null;
+  visual?: VisualDebugInfo;
+}
+
+export interface VisualDebugInfo {
+  detectionMethod: "automatic" | "manual";
+  canvasWidth: number;
+  canvasHeight: number;
+  watermarkBox: BoundingBox;
+  bgColor: { r: number; g: number; b: number };
+  imageFormat: string;
+  imageSizeBytes: number;
 }
 
 export type WorkerProgressMessage = {
