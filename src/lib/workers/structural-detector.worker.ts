@@ -214,16 +214,22 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
     if (Array.isArray(contents)) {
       contentsInfo = `array(${contents.length})`;
       for (const stream of contents) {
-        const bytes = stream.getUnencodedContents?.() ?? stream.getContents?.();
-        if (bytes) {
+        let bytes: Uint8Array | undefined;
+        try { bytes = stream.getUnencodedContents?.(); } catch { /* */ }
+        if (!bytes) { try { bytes = stream.getContents?.(); } catch { /* */ } }
+        if (bytes && bytes.length > 0) {
           contentStr += new TextDecoder().decode(bytes) + "\n";
         }
       }
     } else {
-      contentsInfo = "single stream";
-      const bytes = contents.getUnencodedContents?.() ?? contents.getContents?.();
-      if (bytes) {
+      let bytes: Uint8Array | undefined;
+      try { bytes = contents.getUnencodedContents?.(); } catch { /* */ }
+      if (!bytes) { try { bytes = contents.getContents?.(); } catch { /* */ } }
+      if (bytes && bytes.length > 0) {
+        contentsInfo = `single stream (${bytes.length} bytes)`;
         contentStr = new TextDecoder().decode(bytes);
+      } else {
+        contentsInfo = `single stream (0 bytes from getUnencodedContents/getContents)`;
       }
     }
   }
