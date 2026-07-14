@@ -104,6 +104,32 @@ function readStreamBytes(stream: PDFStreamLike): Uint8Array | null {
   return null;
 }
 
+async function decompressFlate(data: Uint8Array): Promise<Uint8Array | null> {
+  try {
+    const ds = new DecompressionStream("deflate");
+    const writer = ds.writable.getWriter();
+    writer.write(data.slice());
+    writer.close();
+    const reader = ds.readable.getReader();
+    const chunks: Uint8Array[] = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    const total = chunks.reduce((s, c) => s + c.length, 0);
+    const result = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
 async function processPdf(pdfBuffer: ArrayBuffer) {
   post({ type: "progress", stage: "Loading PDF...", percent: 0 });
 
@@ -242,12 +268,23 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
     }
   }
 
-  // Read bytes from resolved streams
+  // Read bytes from resolved streams, try decompression if needed
   let contentStr = "";
   for (const stream of resolvedStreams) {
     const bytes = readStreamBytes(stream);
-    if (bytes) {
-      contentStr += new TextDecoder().decode(bytes) + "\n";
+    if (!bytes) continue;
+
+    const text = new TextDecoder().decode(bytes);
+    const isReadable = /^[\x20-\x7E\r\n\t]*$/.test(text.substring(0, 100));
+    if (isReadable) {
+      contentStr += text + "\n";
+    } else {
+      const decompressed = await decompressFlate(bytes);
+      if (decompressed) {
+        contentStr += new TextDecoder().decode(decompressed) + "\n";
+      } else {
+        contentStr += text + "\n";
+      }
     }
   }
 
