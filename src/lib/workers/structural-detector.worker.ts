@@ -213,7 +213,10 @@ async function processPdfVisualInner(pdfBuffer: ArrayBuffer, manualSelection: Bo
     CanvasFactory: OffscreenCanvasFactory,
   }).promise;
   const pdfPage = await doc.getPage(1);
-  const viewport = pdfPage.getViewport({ scale: 1 });
+  const baseViewport = pdfPage.getViewport({ scale: 1 });
+  const maxDim = Math.max(baseViewport.width, baseViewport.height);
+  const renderScale = Math.max(1, Math.min(4, Math.ceil(2000 / maxDim)));
+  const viewport = pdfPage.getViewport({ scale: renderScale });
 
   const canvas = new OffscreenCanvas(Math.round(viewport.width), Math.round(viewport.height));
   const ctx = canvas.getContext("2d") as OffscreenCanvasRenderingContext2D;
@@ -265,6 +268,7 @@ async function processPdfVisualInner(pdfBuffer: ArrayBuffer, manualSelection: Bo
         detectionResult: { watermark: null, images: [], gridImages: [] },
         visual: {
           detectionMethod: manualSelection ? "manual" : "automatic",
+          renderScale,
           canvasWidth: canvas.width,
           canvasHeight: canvas.height,
           watermarkBox: { x: 0, y: 0, width: 0, height: 0 },
@@ -300,6 +304,7 @@ async function processPdfVisualInner(pdfBuffer: ArrayBuffer, manualSelection: Bo
       detectionResult: null,
       visual: {
         detectionMethod: manualSelection ? "manual" : "automatic",
+        renderScale,
         canvasWidth: canvas.width,
         canvasHeight: canvas.height,
         watermarkBox,
@@ -341,6 +346,7 @@ async function processPdfVisualInner(pdfBuffer: ArrayBuffer, manualSelection: Bo
       detectionResult: null,
       visual: {
         detectionMethod: manualSelection ? "manual" : "automatic",
+        renderScale,
         canvasWidth: canvas.width,
         canvasHeight: canvas.height,
         watermarkBox,

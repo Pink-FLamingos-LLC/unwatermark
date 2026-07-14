@@ -32,6 +32,7 @@ export interface PdfDebugInfo {
 
 export interface VisualDebugInfo {
   detectionMethod: "automatic" | "manual";
+  renderScale: number;
   canvasWidth: number;
   canvasHeight: number;
   watermarkBox: BoundingBox;
