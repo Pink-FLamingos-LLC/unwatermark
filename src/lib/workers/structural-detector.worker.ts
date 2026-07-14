@@ -94,8 +94,8 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
   const pageNode = page.node as unknown as PDFPageNode;
 
   const mediaBox = pageNode.MediaBox();
-  const pageWidth = mediaBox.get(2);
-  const pageHeight = mediaBox.get(3);
+  const pageWidth = Number(mediaBox.get(2));
+  const pageHeight = Number(mediaBox.get(3));
 
   const resources = pageNode.Resources();
 
