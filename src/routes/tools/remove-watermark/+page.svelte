@@ -2,6 +2,7 @@
 	import Dropzone from '$lib/components/Dropzone.svelte';
 	import DetectionMethodSelector from '$lib/components/DetectionMethodSelector.svelte';
 	import HighlightCanvas from '$lib/components/HighlightCanvas.svelte';
+	import { processPdfVisual } from '$lib/workers/visual-processor';
 	import type { WorkerMessage, PdfDebugInfo, DetectionMethod, BoundingBox } from '$lib/workers/types';
 
 	let stage = $state<string | null>(null);
@@ -74,13 +75,35 @@
 		stage = 'Loading PDF...';
 		percent = 0;
 
+		const pdfBuffer = await file.arrayBuffer();
+
+		if (detectionMethod === 'visual') {
+			try {
+				const result = await processPdfVisual(
+					pdfBuffer,
+					selection ?? null,
+					(s, p) => { stage = s; percent = p; },
+					(info) => { debugInfo = info; }
+				);
+				const filename = deriveCleanFilename(file.name);
+				resetState();
+				processedPdf = result;
+				processedFilename = filename;
+				if (autoDownload) {
+					downloadPdf(result, filename);
+				}
+			} catch (err) {
+				error = err instanceof Error ? err.message : 'Visual detection failed';
+				resetState();
+			}
+			return;
+		}
+
 		const w = new Worker(
 			new URL('$lib/workers/structural-detector.worker.ts', import.meta.url),
 			{ type: 'module' }
 		);
 		worker = w;
-
-		const pdfBuffer = await file.arrayBuffer();
 
 		w.onmessage = (e: MessageEvent<WorkerMessage>) => {
 			const msg = e.data;
@@ -108,7 +131,7 @@
 			resetState();
 		};
 
-		w.postMessage({ pdfBuffer, detectionMethod, manualSelection: selection ?? null });
+		w.postMessage({ pdfBuffer });
 	}
 
 	async function renderPreview(data: Uint8Array) {
