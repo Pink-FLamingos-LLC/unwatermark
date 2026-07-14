@@ -192,7 +192,26 @@ async function processPdfVisualInner(pdfBuffer: ArrayBuffer, manualSelection: Bo
 
   post({ type: "progress", stage: "Rendering page to canvas...", percent: 10 });
 
-  const doc = await pdfjsLib.getDocument({ data: pdfBuffer.slice(0) }).promise;
+  class OffscreenCanvasFactory {
+    create(width: number, height: number) {
+      const canvas = new OffscreenCanvas(width, height);
+      return { canvas, context: canvas.getContext("2d") };
+    }
+    reset({ canvas }: { canvas: OffscreenCanvas }, width: number, height: number) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+    destroy({ canvas }: { canvas: OffscreenCanvas | null }) {
+      if (canvas) {
+        canvas.width = canvas.height = 0;
+      }
+    }
+  }
+
+  const doc = await pdfjsLib.getDocument({
+    data: pdfBuffer.slice(0),
+    CanvasFactory: OffscreenCanvasFactory,
+  }).promise;
   const pdfPage = await doc.getPage(1);
   const viewport = pdfPage.getViewport({ scale: 1 });
 
