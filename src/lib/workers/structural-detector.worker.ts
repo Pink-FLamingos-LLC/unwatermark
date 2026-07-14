@@ -199,12 +199,20 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
   let contentsInfo = "none";
 
   if (contentsRaw && typeof contentsRaw === "object" && "size" in contentsRaw && "get" in contentsRaw) {
-    // PDFArray — resolve each element
     const arr = contentsRaw as { size(): number; get(index: number): unknown };
-    contentsInfo = `array(${arr.size()})`;
-    for (let i = 0; i < arr.size(); i++) {
-      const stream = resolveStream(pdfDoc, arr.get(i));
-      if (stream) resolvedStreams.push(stream);
+    const size = arr.size();
+    contentsInfo = `array(${size})`;
+    for (let i = 0; i < size; i++) {
+      const elem = arr.get(i);
+      const stream = resolveStream(pdfDoc, elem);
+      if (stream) {
+        resolvedStreams.push(stream);
+        const bytes = readStreamBytes(stream);
+        contentsInfo += ` [${i}: resolved, ${bytes?.length ?? 0} bytes]`;
+      } else {
+        const keys = elem && typeof elem === "object" ? Object.keys(elem as object).slice(0, 5).join(",") : typeof elem;
+        contentsInfo += ` [${i}: unresolved (${keys})]`;
+      }
     }
   } else if (contentsRaw) {
     const stream = resolveStream(pdfDoc, contentsRaw);
