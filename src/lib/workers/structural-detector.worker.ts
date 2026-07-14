@@ -165,6 +165,7 @@ async function processPdfVisual(pdfBuffer: ArrayBuffer, manualSelection: Boundin
   post({ type: "progress", stage: "Loading PDF for visual detection...", percent: 0 });
 
   const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  pdfjsLib.GlobalWorkerOptions.workerPort = null;
   const pdfDoc = await PDFDocument.load(pdfBuffer, { parseSpeed: 0 });
   const pages = pdfDoc.getPages();
 
