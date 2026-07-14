@@ -1,7 +1,7 @@
 import { PDFDocument } from "pdf-lib";
 import { parseContentStream } from "./content-stream-parser";
 import { detectWatermark } from "./structural-detector";
-import type { WorkerMessage, ImagePlacement, PdfDebugInfo } from "./types";
+import type { WorkerMessage, ImagePlacement, DetectionMethod } from "./types";
 
 interface PDFStreamLike {
   getUnencodedContents?(): Uint8Array;
@@ -14,7 +14,9 @@ interface PDFPageNode {
   get?(key: unknown): unknown;
   Resources():
     | {
-        get(key: unknown): { entries?(): Iterable<[unknown, unknown]>; delete?(key: unknown): void } | undefined;
+        get(
+          key: unknown,
+        ): { entries?(): Iterable<[unknown, unknown]>; delete?(key: unknown): void } | undefined;
         entries?(): Iterable<[unknown, unknown]>;
       }
     | undefined;
@@ -29,8 +31,7 @@ function post(msg: WorkerMessage) {
 
 function decodePdfName(raw: unknown): string {
   const rawName = raw as string | { decodeText?(): string };
-  const name =
-    typeof rawName === "string" ? rawName : (rawName.decodeText?.() ?? String(rawName));
+  const name = typeof rawName === "string" ? rawName : (rawName.decodeText?.() ?? String(rawName));
   return name.startsWith("/") ? name.substring(1) : name;
 }
 
@@ -85,10 +86,16 @@ function resolveStream(pdfDoc: PDFDocument, obj: unknown): PDFStreamLike | null 
   try {
     const ctx = pdfDoc.context as any;
     const resolved = ctx.lookup?.(obj) ?? ctx.lookupMaybe?.(obj);
-    if (resolved && typeof resolved === "object" && ("getUnencodedContents" in resolved || "getContents" in resolved)) {
+    if (
+      resolved &&
+      typeof resolved === "object" &&
+      ("getUnencodedContents" in resolved || "getContents" in resolved)
+    ) {
       return resolved as PDFStreamLike;
     }
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
   return null;
 }
 
@@ -96,11 +103,15 @@ function readStreamBytes(stream: PDFStreamLike): Uint8Array | null {
   try {
     const bytes = stream.getUnencodedContents?.();
     if (bytes && bytes.length > 0) return bytes;
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
   try {
     const bytes = stream.getContents?.();
     if (bytes && bytes.length > 0) return bytes;
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
   return null;
 }
 
@@ -130,7 +141,15 @@ async function decompressFlate(data: Uint8Array): Promise<Uint8Array | null> {
   }
 }
 
-async function processPdf(pdfBuffer: ArrayBuffer) {
+async function processPdf(pdfBuffer: ArrayBuffer, detectionMethod: DetectionMethod) {
+  if (detectionMethod === "visual") {
+    post({
+      type: "error",
+      message: "Visual detection is not yet implemented. Please use Structural detection.",
+    });
+    return;
+  }
+
   post({ type: "progress", stage: "Loading PDF...", percent: 0 });
 
   const pdfDoc = await PDFDocument.load(pdfBuffer, { parseSpeed: 0 });
@@ -171,9 +190,15 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
     post({
       type: "debug",
       info: {
-        pageCount: pages.length, pageWidth, pageHeight,
-        resources: debugResources, xobjectNames: [], xobjectTypes: {},
-        contentStreamLength: 0, imagePlacements: [], detectionResult: null,
+        pageCount: pages.length,
+        pageWidth,
+        pageHeight,
+        resources: debugResources,
+        xobjectNames: [],
+        xobjectTypes: {},
+        contentStreamLength: 0,
+        imagePlacements: [],
+        detectionResult: null,
       },
     });
     post({ type: "error", message: "Page has no resources" });
@@ -184,7 +209,10 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
   if (!xobjectDict && resources.entries) {
     for (const [key, value] of resources.entries()) {
       if (decodePdfName(key) === "XObject") {
-        xobjectDict = value as { entries?(): Iterable<[unknown, unknown]>; delete?(key: unknown): void };
+        xobjectDict = value as {
+          entries?(): Iterable<[unknown, unknown]>;
+          delete?(key: unknown): void;
+        };
         break;
       }
     }
@@ -193,9 +221,15 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
     post({
       type: "debug",
       info: {
-        pageCount: pages.length, pageWidth, pageHeight,
-        resources: debugResources, xobjectNames: [], xobjectTypes: {},
-        contentStreamLength: 0, imagePlacements: [], detectionResult: null,
+        pageCount: pages.length,
+        pageWidth,
+        pageHeight,
+        resources: debugResources,
+        xobjectNames: [],
+        xobjectTypes: {},
+        contentStreamLength: 0,
+        imagePlacements: [],
+        detectionResult: null,
       },
     });
     post({ type: "error", message: "No XObjects found on page" });
@@ -225,7 +259,12 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
   let resolvedStreams: PDFStreamLike[] = [];
   let contentsInfo = "none";
 
-  if (contentsRaw && typeof contentsRaw === "object" && "size" in contentsRaw && "get" in contentsRaw) {
+  if (
+    contentsRaw &&
+    typeof contentsRaw === "object" &&
+    "size" in contentsRaw &&
+    "get" in contentsRaw
+  ) {
     const arr = contentsRaw as { size(): number; get(index: number): unknown };
     const size = arr.size();
     contentsInfo = `array(${size})`;
@@ -237,7 +276,12 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
         const bytes = readStreamBytes(stream);
         contentsInfo += ` [${i}: resolved, ${bytes?.length ?? 0} bytes]`;
       } else {
-        const keys = elem && typeof elem === "object" ? Object.keys(elem as object).slice(0, 5).join(",") : typeof elem;
+        const keys =
+          elem && typeof elem === "object"
+            ? Object.keys(elem as object)
+                .slice(0, 5)
+                .join(",")
+            : typeof elem;
         contentsInfo += ` [${i}: unresolved (${keys})]`;
       }
     }
@@ -298,13 +342,26 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
     post({
       type: "debug",
       info: {
-        pageCount: pages.length, pageWidth, pageHeight,
+        pageCount: pages.length,
+        pageWidth,
+        pageHeight,
         resources: { ...debugResources, _contents: [contentsInfo] },
-        xobjectNames, xobjectTypes,
-        contentStreamLength: 0, imagePlacements: [], detectionResult: null,
+        xobjectNames,
+        xobjectTypes,
+        contentStreamLength: 0,
+        imagePlacements: [],
+        detectionResult: null,
       },
     });
-    post({ type: "error", message: "Could not read page content stream (Contents: " + contentsInfo + ", XObjects found: " + xobjectNames.length + ")" });
+    post({
+      type: "error",
+      message:
+        "Could not read page content stream (Contents: " +
+        contentsInfo +
+        ", XObjects found: " +
+        xobjectNames.length +
+        ")",
+    });
     return;
   }
 
@@ -312,18 +369,30 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
 
   const images: ImagePlacement[] = parseContentStream(contentStr, new Set(xobjectNames));
 
-  const detectionResult = images.length > 0 ? (() => {
-    const watermark = detectWatermark(images);
-    const gridImages = images.filter((img) => img !== watermark);
-    return { watermark: watermark?.box ?? null, images, gridImages };
-  })() : null;
+  const detectionResult =
+    images.length > 0
+      ? (() => {
+          const watermark = detectWatermark(images);
+          const gridImages = images.filter((img) => img !== watermark);
+          return { watermark: watermark?.box ?? null, images, gridImages };
+        })()
+      : null;
 
-  post({ type: "debug", info: {
-    pageCount: pages.length, pageWidth, pageHeight,
-    resources: debugResources, xobjectNames, xobjectTypes,
-    contentStreamLength: contentStr.length, contentStreamRaw: contentStr,
-    imagePlacements: images, detectionResult,
-  }});
+  post({
+    type: "debug",
+    info: {
+      pageCount: pages.length,
+      pageWidth,
+      pageHeight,
+      resources: debugResources,
+      xobjectNames,
+      xobjectTypes,
+      contentStreamLength: contentStr.length,
+      contentStreamRaw: contentStr,
+      imagePlacements: images,
+      detectionResult,
+    },
+  });
 
   if (images.length === 0) {
     post({ type: "error", message: "No images found on page" });
@@ -360,9 +429,11 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
 }
 
 if (typeof self !== "undefined") {
-  self.onmessage = async (e: MessageEvent<{ pdfBuffer: ArrayBuffer }>) => {
+  self.onmessage = async (
+    e: MessageEvent<{ pdfBuffer: ArrayBuffer; detectionMethod: DetectionMethod }>,
+  ) => {
     try {
-      await processPdf(e.data.pdfBuffer);
+      await processPdf(e.data.pdfBuffer, e.data.detectionMethod);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error during processing";
       post({ type: "error", message });

@@ -17,16 +17,16 @@ export interface DetectionResult {
 }
 
 export interface PdfDebugInfo {
-	pageCount: number;
-	pageWidth: number;
-	pageHeight: number;
-	resources: Record<string, string[]>;
-	xobjectNames: string[];
-	xobjectTypes: Record<string, string>;
-	contentStreamLength: number;
-	contentStreamRaw?: string;
-	imagePlacements: ImagePlacement[];
-	detectionResult: DetectionResult | null;
+  pageCount: number;
+  pageWidth: number;
+  pageHeight: number;
+  resources: Record<string, string[]>;
+  xobjectNames: string[];
+  xobjectTypes: Record<string, string>;
+  contentStreamLength: number;
+  contentStreamRaw?: string;
+  imagePlacements: ImagePlacement[];
+  detectionResult: DetectionResult | null;
 }
 
 export type WorkerProgressMessage = {
@@ -49,6 +49,8 @@ export type WorkerErrorMessage = {
   type: "error";
   message: string;
 };
+
+export type DetectionMethod = "structural" | "visual";
 
 export type WorkerMessage =
   | WorkerProgressMessage

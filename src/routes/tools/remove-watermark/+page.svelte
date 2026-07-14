@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Dropzone from '$lib/components/Dropzone.svelte';
-	import type { WorkerMessage, PdfDebugInfo } from '$lib/workers/types';
+	import DetectionMethodSelector from '$lib/components/DetectionMethodSelector.svelte';
+	import type { WorkerMessage, PdfDebugInfo, DetectionMethod } from '$lib/workers/types';
 
 	let stage = $state<string | null>(null);
 	let percent = $state(0);
@@ -9,6 +10,8 @@
 	let worker = $state<Worker | null>(null);
 	let debugMode = $state(false);
 	let debugInfo = $state<PdfDebugInfo | null>(null);
+	let detectionMethod = $state<DetectionMethod>('structural');
+	let uploadedFile = $state<File | null>(null);
 
 	function deriveCleanFilename(originalName: string): string {
 		const lastDot = originalName.lastIndexOf('.');
@@ -38,7 +41,14 @@
 		resetState();
 	}
 
-	async function handleFile(file: File) {
+	function handleMethodChange(method: DetectionMethod) {
+		detectionMethod = method;
+		if (uploadedFile && error) {
+			processFile(uploadedFile);
+		}
+	}
+
+	async function processFile(file: File) {
 		error = null;
 		debugInfo = null;
 		isProcessing = true;
@@ -75,7 +85,12 @@
 			resetState();
 		};
 
-		w.postMessage({ pdfBuffer });
+		w.postMessage({ pdfBuffer, detectionMethod });
+	}
+
+	async function handleFile(file: File) {
+		uploadedFile = file;
+		processFile(file);
 	}
 </script>
 
@@ -108,6 +123,11 @@
 		</div>
 	{:else}
 		<Dropzone onfile={handleFile} />
+		{#if uploadedFile && !isProcessing}
+			<div class="mt-4">
+				<DetectionMethodSelector selected={detectionMethod} onchange={handleMethodChange} />
+			</div>
+		{/if}
 	{/if}
 
 	{#if error}
@@ -118,6 +138,15 @@
 					This PDF has {debugInfo.xobjectNames.length} image(s) but the watermark appears to be embedded in the image pixels, not as a separate object.
 					Visual detection (coming soon) will handle this type of PDF.
 				</p>
+			{/if}
+			{#if uploadedFile && !isProcessing}
+				{@const otherMethod = detectionMethod === 'structural' ? 'visual' : 'structural'}
+				<button
+					class="mt-3 w-full h-10 border border-on-error-container/30 text-on-error-container rounded-lg text-label-lg font-semibold active:scale-95 transition-transform"
+					onclick={() => handleMethodChange(otherMethod)}
+				>
+					Try {otherMethod === 'structural' ? 'Structural' : 'Visual'} detection
+				</button>
 			{/if}
 		</div>
 	{/if}
