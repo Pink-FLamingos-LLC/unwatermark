@@ -10,14 +10,14 @@
 
 	const methods: { id: DetectionMethod; title: string; description: string }[] = [
 		{
-			id: 'structural',
-			title: 'Structural',
-			description: 'Parses PDF objects to find the watermark. Fast and works for most card sheets.'
-		},
-		{
 			id: 'visual',
 			title: 'Visual',
 			description: 'Renders the page and analyzes pixels. Handles edge cases where PDF structure is unusual.'
+		},
+		{
+			id: 'structural',
+			title: 'Structural',
+			description: 'Parses PDF objects to find the watermark. Fast and works for most card sheets.'
 		}
 	];
 

@@ -11,7 +11,7 @@
 	let worker = $state<Worker | null>(null);
 	let debugMode = $state(false);
 	let debugInfo = $state<PdfDebugInfo | null>(null);
-	let detectionMethod = $state<DetectionMethod>('structural');
+	let detectionMethod = $state<DetectionMethod>('visual');
 	let uploadedFile = $state<File | null>(null);
 	let advancedMode = $state(false);
 	let manualSelection = $state<BoundingBox | null>(null);
