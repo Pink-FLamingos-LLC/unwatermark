@@ -83,7 +83,8 @@ function resolveStream(pdfDoc: PDFDocument, obj: unknown): PDFStreamLike | null 
   if (!obj || typeof obj !== "object") return null;
   if ("getUnencodedContents" in obj || "getContents" in obj) return obj as PDFStreamLike;
   try {
-    const resolved = (pdfDoc.context as any).lookupMaybe?.(obj);
+    const ctx = pdfDoc.context as any;
+    const resolved = ctx.lookup?.(obj) ?? ctx.lookupMaybe?.(obj);
     if (resolved && typeof resolved === "object" && ("getUnencodedContents" in resolved || "getContents" in resolved)) {
       return resolved as PDFStreamLike;
     }
