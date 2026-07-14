@@ -175,9 +175,11 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
 
   const contents = pageNode.Contents();
   let contentStr = "";
+  let contentsInfo = "none";
 
   if (contents) {
     if (Array.isArray(contents)) {
+      contentsInfo = `array(${contents.length})`;
       for (const stream of contents) {
         const bytes = stream.getUnencodedContents?.() ?? stream.getContents?.();
         if (bytes) {
@@ -185,6 +187,7 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
         }
       }
     } else {
+      contentsInfo = "single stream";
       const bytes = contents.getUnencodedContents?.() ?? contents.getContents?.();
       if (bytes) {
         contentStr = new TextDecoder().decode(bytes);
@@ -199,7 +202,7 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
         pageCount: pages.length,
         pageWidth,
         pageHeight,
-        resources: debugResources,
+        resources: { ...debugResources, _contents: [contentsInfo] },
         xobjectNames,
         xobjectTypes,
         contentStreamLength: 0,
@@ -207,7 +210,7 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
         detectionResult: null,
       },
     });
-    post({ type: "error", message: "Could not read page content stream" });
+    post({ type: "error", message: "Could not read page content stream (Contents: " + contentsInfo + ", XObjects found: " + xobjectNames.length + ")" });
     return;
   }
 
