@@ -1,5 +1,72 @@
 <script lang="ts">
 	import Dropzone from '$lib/components/Dropzone.svelte';
+	import type { WorkerMessage } from '$lib/workers/types';
+
+	let stage = $state<string | null>(null);
+	let percent = $state(0);
+	let error = $state<string | null>(null);
+	let isProcessing = $state(false);
+
+	function deriveCleanFilename(originalName: string): string {
+		const lastDot = originalName.lastIndexOf('.');
+		if (lastDot <= 0) return `${originalName}_clean.pdf`;
+		return `${originalName.substring(0, lastDot)}_clean.pdf`;
+	}
+
+	function downloadPdf(data: Uint8Array, filename: string) {
+		const blob = new Blob([data.slice().buffer as ArrayBuffer], { type: 'application/pdf' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = filename;
+		a.click();
+		URL.revokeObjectURL(url);
+	}
+
+	async function handleFile(file: File) {
+		error = null;
+		isProcessing = true;
+		stage = 'Loading PDF...';
+		percent = 0;
+
+		const worker = new Worker(
+			new URL('$lib/workers/structural-detector.worker.ts', import.meta.url),
+			{ type: 'module' }
+		);
+
+		const pdfBuffer = await file.arrayBuffer();
+
+		worker.onmessage = (e: MessageEvent<WorkerMessage>) => {
+			const msg = e.data;
+			if (msg.type === 'progress') {
+				stage = msg.stage;
+				percent = msg.percent;
+			} else if (msg.type === 'result') {
+				const filename = deriveCleanFilename(file.name);
+				downloadPdf(msg.processedPdf, filename);
+				isProcessing = false;
+				stage = null;
+				percent = 0;
+				worker.terminate();
+			} else if (msg.type === 'error') {
+				error = msg.message;
+				isProcessing = false;
+				stage = null;
+				percent = 0;
+				worker.terminate();
+			}
+		};
+
+		worker.onerror = (e) => {
+			error = e.message || 'Worker error';
+			isProcessing = false;
+			stage = null;
+			percent = 0;
+			worker.terminate();
+		};
+
+		worker.postMessage({ pdfBuffer });
+	}
 </script>
 
 <svelte:head>
@@ -10,5 +77,24 @@
 	<h1 class="text-headline-lg font-bold text-on-surface mb-2">Remove Watermark</h1>
 	<p class="text-body-md text-on-surface-variant mb-6">Upload a PDF to remove the watermark from the first page.</p>
 
-	<Dropzone />
+	{#if isProcessing && stage}
+		<div class="bg-surface-charcoal border border-[#FFFFFF10] rounded-xl p-4 mb-4">
+			<div class="flex justify-between items-center mb-2">
+				<span class="text-label-lg text-on-surface">{stage}</span>
+				<span class="text-label-sm text-on-surface-variant">{percent}%</span>
+			</div>
+			<div class="w-full h-2 bg-surface-container rounded-full overflow-hidden">
+				<div
+					class="h-full bg-primary rounded-full transition-all duration-300"
+					style="width: {percent}%"
+				></div>
+			</div>
+		</div>
+	{:else}
+		<Dropzone onfile={handleFile} />
+	{/if}
+
+	{#if error}
+		<p class="text-label-sm text-on-error-container bg-error-container px-3 py-2 rounded-lg mt-2" role="alert">{error}</p>
+	{/if}
 </main>

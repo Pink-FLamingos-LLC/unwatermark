@@ -19,11 +19,13 @@ export interface DetectionResult {
 export type WorkerProgressMessage = {
   type: "progress";
   stage: string;
+  percent: number;
 };
 
 export type WorkerResultMessage = {
   type: "result";
-} & DetectionResult;
+  processedPdf: Uint8Array;
+};
 
 export type WorkerErrorMessage = {
   type: "error";
