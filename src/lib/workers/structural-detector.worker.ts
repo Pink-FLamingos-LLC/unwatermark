@@ -28,10 +28,10 @@ interface PDFPageNode {
 function post(msg: WorkerMessage) {
   postMessage(msg);
 }
-
 function decodePdfName(raw: unknown): string {
   const rawName = raw as string | { decodeText?(): string };
-  const name = typeof rawName === "string" ? rawName : (rawName.decodeText?.() ?? String(rawName));
+  const name =
+    typeof rawName === "string" ? rawName : (rawName.decodeText?.() ?? String(rawName));
   return name.startsWith("/") ? name.substring(1) : name;
 }
 
