@@ -294,98 +294,6 @@
 					</button>
 				</div>
 			</div>
-
-			<div class="mt-4">
-				<label class="flex items-center gap-2 cursor-pointer">
-					<input type="checkbox" bind:checked={debugMode} class="w-5 h-5 accent-primary" />
-					<span class="text-label-lg text-on-surface-variant">Debug mode</span>
-				</label>
-			</div>
-
-			{#if debugMode && debugInfo}
-				<div class="bg-surface-charcoal border border-[#FFFFFF10] rounded-xl p-4 mt-4">
-					<h2 class="text-label-lg font-semibold text-on-surface mb-3">PDF Debug Info</h2>
-
-					<div class="space-y-3 text-label-sm">
-						<div>
-							<span class="text-on-surface-variant">Pages:</span>
-							<span class="text-on-surface ml-2">{debugInfo.pageCount}</span>
-						</div>
-						<div>
-							<span class="text-on-surface-variant">Page size:</span>
-							<span class="text-on-surface ml-2">{debugInfo.pageWidth.toFixed(1)} x {debugInfo.pageHeight.toFixed(1)}</span>
-						</div>
-
-						{#if debugInfo.visual}
-							<div>
-								<span class="text-on-surface-variant">Visual Detection:</span>
-								<div class="ml-4 space-y-1">
-									<div class="text-on-surface">
-										Method: <span class="text-primary">{debugInfo.visual.detectionMethod}</span>
-									</div>
-									<div class="text-on-surface-variant">
-										Canvas: {debugInfo.visual.canvasWidth} x {debugInfo.visual.canvasHeight}
-									</div>
-									<div class="text-on-surface">
-										Watermark: ({debugInfo.visual.watermarkBox.x}, {debugInfo.visual.watermarkBox.y}) {debugInfo.visual.watermarkBox.width}x{debugInfo.visual.watermarkBox.height}
-									</div>
-									<div class="text-on-surface-variant">
-										Background: rgb({debugInfo.visual.bgColor.r}, {debugInfo.visual.bgColor.g}, {debugInfo.visual.bgColor.b})
-									</div>
-									{#if debugInfo.visual.imageFormat !== 'pending'}
-										<div class="text-on-surface-variant">
-											Image: {debugInfo.visual.imageFormat.toUpperCase()} ({(debugInfo.visual.imageSizeBytes / 1024).toFixed(1)} KB)
-										</div>
-									{/if}
-								</div>
-							</div>
-						{/if}
-
-						{#if debugInfo.xobjectNames.length > 0}
-							<div>
-								<span class="text-on-surface-variant">XObjects:</span>
-								<ul class="ml-4 mt-1 space-y-1">
-									{#each debugInfo.xobjectNames as name (name)}
-										<li class="text-on-surface">
-											/{name}
-											<span class="text-on-surface-variant"> ({debugInfo.xobjectTypes[name] ?? 'unknown'})</span>
-										</li>
-									{/each}
-								</ul>
-							</div>
-						{/if}
-
-						{#if debugInfo.imagePlacements.length > 0}
-							<div>
-								<span class="text-on-surface-variant">Image placements ({debugInfo.imagePlacements.length}):</span>
-								<ul class="ml-4 mt-1 space-y-1">
-									{#each debugInfo.imagePlacements as img (img.name)}
-										<li class="text-on-surface">
-											/{img.name} — ({img.box.x.toFixed(1)}, {img.box.y.toFixed(1)}) {img.box.width.toFixed(1)}x{img.box.height.toFixed(1)}
-										</li>
-									{/each}
-								</ul>
-							</div>
-						{/if}
-
-						{#if debugInfo.detectionResult}
-							<div>
-								<span class="text-on-surface-variant">Detection:</span>
-								{#if debugInfo.detectionResult.watermark}
-									<div class="ml-4 text-primary">
-										Watermark: ({debugInfo.detectionResult.watermark.x.toFixed(1)}, {debugInfo.detectionResult.watermark.y.toFixed(1)}) {debugInfo.detectionResult.watermark.width.toFixed(1)}x{debugInfo.detectionResult.watermark.height.toFixed(1)}
-									</div>
-								{:else}
-									<div class="ml-4 text-meeple-yellow">No watermark detected</div>
-								{/if}
-								<div class="ml-4 text-on-surface-variant">
-									Grid images: {debugInfo.detectionResult.gridImages.length}
-								</div>
-							</div>
-						{/if}
-					</div>
-				</div>
-			{/if}
 		{/if}
 	{/if}
 
@@ -408,55 +316,131 @@
 				</button>
 			{/if}
 		</div>
+	{/if}
 
-		{#if debugInfo}
-			<div class="mt-4">
-				<label class="flex items-center gap-2 cursor-pointer">
-					<input type="checkbox" bind:checked={debugMode} class="w-5 h-5 accent-primary" />
-					<span class="text-label-lg text-on-surface-variant">Debug mode</span>
-				</label>
-			</div>
-			{#if debugMode}
-				<div class="bg-surface-charcoal border border-[#FFFFFF10] rounded-xl p-4 mt-4">
-					<h2 class="text-label-lg font-semibold text-on-surface mb-3">PDF Debug Info</h2>
-					<div class="space-y-3 text-label-sm">
-						{#if debugInfo.visual}
-							<div>
-								<span class="text-on-surface-variant">Visual Detection:</span>
-								<div class="ml-4 space-y-1">
-									<div class="text-on-surface">
-										Method: <span class="text-primary">{debugInfo.visual.detectionMethod}</span>
-									</div>
-									<div class="text-on-surface-variant">
-										Canvas: {debugInfo.visual.canvasWidth} x {debugInfo.visual.canvasHeight}
-									</div>
-									<div class="text-on-surface">
-										Watermark: ({debugInfo.visual.watermarkBox.x}, {debugInfo.visual.watermarkBox.y}) {debugInfo.visual.watermarkBox.width}x{debugInfo.visual.watermarkBox.height}
-									</div>
-									<div class="text-on-surface-variant">
-										Background: rgb({debugInfo.visual.bgColor.r}, {debugInfo.visual.bgColor.g}, {debugInfo.visual.bgColor.b})
-									</div>
-									{#if debugInfo.visual.imageFormat !== 'pending'}
-										<div class="text-on-surface-variant">
-											Image: {debugInfo.visual.imageFormat.toUpperCase()} ({(debugInfo.visual.imageSizeBytes / 1024).toFixed(1)} KB)
-										</div>
-									{/if}
-								</div>
-							</div>
-						{/if}
-						{#if debugInfo.xobjectNames.length > 0}
-							<div>
-								<span class="text-on-surface-variant">XObjects:</span>
-								<ul class="ml-4 mt-1 space-y-1">
-									{#each debugInfo.xobjectNames as name (name)}
-										<li class="text-on-surface">/{name}</li>
-									{/each}
-								</ul>
-							</div>
-						{/if}
-					</div>
+	<div class="mt-4">
+		<label class="flex items-center gap-2 cursor-pointer">
+			<input type="checkbox" bind:checked={debugMode} class="w-5 h-5 accent-primary" />
+			<span class="text-label-lg text-on-surface-variant">Debug mode</span>
+		</label>
+	</div>
+
+	{#if debugMode && debugInfo}
+		<div class="bg-surface-charcoal border border-[#FFFFFF10] rounded-xl p-4 mt-4">
+			<h2 class="text-label-lg font-semibold text-on-surface mb-3">PDF Debug Info</h2>
+
+			<div class="space-y-3 text-label-sm">
+				<div>
+					<span class="text-on-surface-variant">Pages:</span>
+					<span class="text-on-surface ml-2">{debugInfo.pageCount}</span>
 				</div>
-			{/if}
-		{/if}
+				<div>
+					<span class="text-on-surface-variant">Page size:</span>
+					<span class="text-on-surface ml-2">{debugInfo.pageWidth.toFixed(1)} x {debugInfo.pageHeight.toFixed(1)}</span>
+				</div>
+				<div>
+					<span class="text-on-surface-variant">Content stream:</span>
+					<span class="text-on-surface ml-2">{debugInfo.contentStreamLength} chars</span>
+					{#if debugInfo.contentStreamRaw}
+						<pre class="mt-1 p-2 bg-surface-container rounded text-label-sm text-on-surface-variant overflow-x-auto">{debugInfo.contentStreamRaw}</pre>
+					{/if}
+				</div>
+
+				{#if Object.keys(debugInfo.resources).length > 0}
+					<div>
+						<span class="text-on-surface-variant">Resources:</span>
+						<ul class="ml-4 mt-1 space-y-1">
+							{#each Object.entries(debugInfo.resources) as [name, entries] (name)}
+								<li class="text-on-surface">
+									/{name}
+									{#if entries.length > 0}
+										<span class="text-on-surface-variant"> ({entries.length})</span>
+										{#if debugMode}
+											<ul class="ml-4 text-on-surface-variant">
+												{#each entries as entry (entry)}
+													<li>/{entry}</li>
+												{/each}
+											</ul>
+										{/if}
+									{/if}
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{/if}
+
+				{#if debugInfo.xobjectNames.length > 0}
+					<div>
+						<span class="text-on-surface-variant">XObjects:</span>
+						<ul class="ml-4 mt-1 space-y-1">
+							{#each debugInfo.xobjectNames as name (name)}
+								<li class="text-on-surface">
+									/{name}
+									<span class="text-on-surface-variant"> ({debugInfo.xobjectTypes[name] ?? 'unknown'})</span>
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{:else}
+					<div class="text-meeple-yellow">No XObjects found</div>
+				{/if}
+
+				{#if debugInfo.imagePlacements.length > 0}
+					<div>
+						<span class="text-on-surface-variant">Image placements ({debugInfo.imagePlacements.length}):</span>
+						<ul class="ml-4 mt-1 space-y-1">
+							{#each debugInfo.imagePlacements as img (img.name)}
+								<li class="text-on-surface">
+									/{img.name} — ({img.box.x.toFixed(1)}, {img.box.y.toFixed(1)}) {img.box.width.toFixed(1)}x{img.box.height.toFixed(1)}
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{:else}
+					<div class="text-meeple-yellow">No image placements found in content stream</div>
+				{/if}
+
+				{#if debugInfo.detectionResult}
+					<div>
+						<span class="text-on-surface-variant">Detection:</span>
+						{#if debugInfo.detectionResult.watermark}
+							<div class="ml-4 text-primary">
+								Watermark: ({debugInfo.detectionResult.watermark.x.toFixed(1)}, {debugInfo.detectionResult.watermark.y.toFixed(1)}) {debugInfo.detectionResult.watermark.width.toFixed(1)}x{debugInfo.detectionResult.watermark.height.toFixed(1)}
+							</div>
+						{:else}
+							<div class="ml-4 text-meeple-yellow">No watermark detected</div>
+						{/if}
+						<div class="ml-4 text-on-surface-variant">
+							Grid images: {debugInfo.detectionResult.gridImages.length}
+						</div>
+					</div>
+				{/if}
+
+				{#if debugInfo.visual}
+					<div>
+						<span class="text-on-surface-variant">Visual Detection:</span>
+						<div class="ml-4 space-y-1">
+							<div class="text-on-surface">
+								Method: <span class="text-primary">{debugInfo.visual.detectionMethod}</span>
+							</div>
+							<div class="text-on-surface-variant">
+								Canvas: {debugInfo.visual.canvasWidth} x {debugInfo.visual.canvasHeight}
+							</div>
+							<div class="text-on-surface">
+								Watermark: ({debugInfo.visual.watermarkBox.x}, {debugInfo.visual.watermarkBox.y}) {debugInfo.visual.watermarkBox.width}x{debugInfo.visual.watermarkBox.height}
+							</div>
+							<div class="text-on-surface-variant">
+								Background: rgb({debugInfo.visual.bgColor.r}, {debugInfo.visual.bgColor.g}, {debugInfo.visual.bgColor.b})
+							</div>
+							{#if debugInfo.visual.imageFormat !== 'pending'}
+								<div class="text-on-surface-variant">
+									Image: {debugInfo.visual.imageFormat.toUpperCase()} ({(debugInfo.visual.imageSizeBytes / 1024).toFixed(1)} KB)
+								</div>
+							{/if}
+						</div>
+					</div>
+				{/if}
+			</div>
+		</div>
 	{/if}
 </main>

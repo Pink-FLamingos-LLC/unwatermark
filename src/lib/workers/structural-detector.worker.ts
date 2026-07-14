@@ -249,6 +249,31 @@ async function processPdfVisualInner(pdfBuffer: ArrayBuffer, manualSelection: Bo
   }
 
   if (!watermarkBox) {
+    const pixelData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    const bgColor = findBackgroundColor(pixelData, canvas.width, canvas.height);
+    post({
+      type: "debug",
+      info: {
+        pageCount: pages.length,
+        pageWidth,
+        pageHeight,
+        resources: {},
+        xobjectNames: [],
+        xobjectTypes: {},
+        contentStreamLength: 0,
+        imagePlacements: [],
+        detectionResult: { watermark: null, images: [], gridImages: [] },
+        visual: {
+          detectionMethod: manualSelection ? "manual" : "automatic",
+          canvasWidth: canvas.width,
+          canvasHeight: canvas.height,
+          watermarkBox: { x: 0, y: 0, width: 0, height: 0 },
+          bgColor,
+          imageFormat: "none",
+          imageSizeBytes: 0,
+        },
+      },
+    });
     post({
       type: "error",
       message: "No watermark detected visually. Try manual selection or structural detection.",
