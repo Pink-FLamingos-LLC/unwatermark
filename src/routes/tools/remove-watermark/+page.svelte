@@ -17,6 +17,11 @@
 	let manualSelection = $state<BoundingBox | null>(null);
 	let pdfPageWidth = $state(612);
 	let pdfPageHeight = $state(792);
+	let autoDownload = $state(false);
+	let processedPdf = $state<Uint8Array | null>(null);
+	let processedFilename = $state<string>('');
+	let previewCanvasEl = $state<HTMLCanvasElement | undefined>();
+	let isRenderingPreview = $state(false);
 
 	function deriveCleanFilename(originalName: string): string {
 		const lastDot = originalName.lastIndexOf('.');
@@ -48,6 +53,7 @@
 
 	function handleMethodChange(method: DetectionMethod) {
 		detectionMethod = method;
+		processedPdf = null;
 		if (method !== 'visual') {
 			advancedMode = false;
 			manualSelection = null;
@@ -63,6 +69,7 @@
 	async function processFile(file: File, selection?: BoundingBox) {
 		error = null;
 		debugInfo = null;
+		processedPdf = null;
 		isProcessing = true;
 		stage = 'Loading PDF...';
 		percent = 0;
@@ -84,8 +91,12 @@
 				debugInfo = msg.info;
 			} else if (msg.type === 'result') {
 				const filename = deriveCleanFilename(file.name);
-				downloadPdf(msg.processedPdf, filename);
 				resetState();
+				processedPdf = msg.processedPdf;
+				processedFilename = filename;
+				if (autoDownload) {
+					downloadPdf(msg.processedPdf, filename);
+				}
 			} else if (msg.type === 'error') {
 				error = msg.message;
 				resetState();
@@ -100,10 +111,53 @@
 		w.postMessage({ pdfBuffer, detectionMethod, manualSelection: selection ?? null });
 	}
 
+	async function renderPreview(data: Uint8Array) {
+		const canvas = previewCanvasEl;
+		if (!canvas) return;
+		isRenderingPreview = true;
+
+		try {
+			const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+			const workerUrl = (await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')).default;
+			pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+
+			const buf = data.slice().buffer as ArrayBuffer;
+			const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+			const page = await doc.getPage(1);
+			const vp = page.getViewport({ scale: 1 });
+
+			const dpr = window.devicePixelRatio || 1;
+			const containerW = canvas.parentElement?.clientWidth ?? 600;
+			const scale = containerW / vp.width;
+			const scaledVp = page.getViewport({ scale });
+
+			canvas.width = Math.round(scaledVp.width * dpr);
+			canvas.height = Math.round(scaledVp.height * dpr);
+			canvas.style.width = `${scaledVp.width}px`;
+			canvas.style.height = `${scaledVp.height}px`;
+
+			const ctx = canvas.getContext('2d')!;
+			ctx.scale(dpr, dpr);
+
+			await page.render({ canvas, canvasContext: ctx, viewport: scaledVp }).promise;
+		} catch (err) {
+			console.error('Preview render error:', err);
+		} finally {
+			isRenderingPreview = false;
+		}
+	}
+
+	$effect(() => {
+		if (processedPdf && previewCanvasEl) {
+			renderPreview(processedPdf);
+		}
+	});
+
 	async function handleFile(file: File) {
 		uploadedFile = file;
 		error = null;
 		manualSelection = null;
+		processedPdf = null;
 		if (detectionMethod === 'visual' && advancedMode) {
 			return;
 		}
@@ -126,6 +180,19 @@
 	function processWithSelection() {
 		if (!uploadedFile || !manualSelection) return;
 		processFile(uploadedFile, manualSelection);
+	}
+
+	function handleDownload() {
+		if (processedPdf) {
+			downloadPdf(processedPdf, processedFilename);
+		}
+	}
+
+	function startOver() {
+		processedPdf = null;
+		uploadedFile = null;
+		error = null;
+		manualSelection = null;
 	}
 </script>
 
@@ -158,9 +225,15 @@
 		</div>
 	{:else}
 		<Dropzone onfile={handleFile} />
-		{#if uploadedFile && !isProcessing}
+		{#if uploadedFile && !isProcessing && !processedPdf}
 			<div class="mt-4">
 				<DetectionMethodSelector selected={detectionMethod} onchange={handleMethodChange} />
+			</div>
+			<div class="mt-4">
+				<label class="flex items-center gap-2 cursor-pointer">
+					<input type="checkbox" bind:checked={autoDownload} class="w-5 h-5 accent-primary" />
+					<span class="text-label-lg text-on-surface-variant">Auto-download after processing</span>
+				</label>
 			</div>
 			{#if detectionMethod === 'visual'}
 				<div class="mt-4">
@@ -193,6 +266,34 @@
 					</button>
 				{/if}
 			{/if}
+		{/if}
+
+		{#if processedPdf}
+			<div class="mt-4 bg-surface-charcoal border border-[#FFFFFF10] rounded-xl p-4">
+				<h2 class="text-label-lg font-semibold text-on-surface mb-3">Preview</h2>
+				<div class="flex justify-center bg-surface-container rounded-lg overflow-hidden p-2">
+					{#if isRenderingPreview}
+						<div class="flex items-center justify-center h-64">
+							<span class="text-label-lg text-on-surface-variant">Rendering preview...</span>
+						</div>
+					{/if}
+					<canvas bind:this={previewCanvasEl} class="max-w-full" class:hidden={isRenderingPreview}></canvas>
+				</div>
+				<div class="mt-4 flex gap-3">
+					<button
+						class="flex-1 h-12 bg-primary text-on-primary rounded-lg text-label-lg font-semibold active:scale-95 transition-transform"
+						onclick={handleDownload}
+					>
+						Download {processedFilename}
+					</button>
+					<button
+						class="h-12 px-4 border border-on-surface-variant/30 text-on-surface-variant rounded-lg text-label-lg active:scale-95 transition-transform"
+						onclick={startOver}
+					>
+						Start over
+					</button>
+				</div>
+			</div>
 		{/if}
 	{/if}
 
