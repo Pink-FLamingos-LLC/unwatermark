@@ -6,6 +6,7 @@
 	let percent = $state(0);
 	let error = $state<string | null>(null);
 	let isProcessing = $state(false);
+	let worker = $state<Worker | null>(null);
 
 	function deriveCleanFilename(originalName: string): string {
 		const lastDot = originalName.lastIndexOf('.');
@@ -23,20 +24,33 @@
 		URL.revokeObjectURL(url);
 	}
 
+	function resetState() {
+		isProcessing = false;
+		stage = null;
+		percent = 0;
+		worker?.terminate();
+		worker = null;
+	}
+
+	function cancel() {
+		resetState();
+	}
+
 	async function handleFile(file: File) {
 		error = null;
 		isProcessing = true;
 		stage = 'Loading PDF...';
 		percent = 0;
 
-		const worker = new Worker(
+		const w = new Worker(
 			new URL('$lib/workers/structural-detector.worker.ts', import.meta.url),
 			{ type: 'module' }
 		);
+		worker = w;
 
 		const pdfBuffer = await file.arrayBuffer();
 
-		worker.onmessage = (e: MessageEvent<WorkerMessage>) => {
+		w.onmessage = (e: MessageEvent<WorkerMessage>) => {
 			const msg = e.data;
 			if (msg.type === 'progress') {
 				stage = msg.stage;
@@ -44,28 +58,19 @@
 			} else if (msg.type === 'result') {
 				const filename = deriveCleanFilename(file.name);
 				downloadPdf(msg.processedPdf, filename);
-				isProcessing = false;
-				stage = null;
-				percent = 0;
-				worker.terminate();
+				resetState();
 			} else if (msg.type === 'error') {
 				error = msg.message;
-				isProcessing = false;
-				stage = null;
-				percent = 0;
-				worker.terminate();
+				resetState();
 			}
 		};
 
-		worker.onerror = (e) => {
+		w.onerror = (e) => {
 			error = e.message || 'Worker error';
-			isProcessing = false;
-			stage = null;
-			percent = 0;
-			worker.terminate();
+			resetState();
 		};
 
-		worker.postMessage({ pdfBuffer });
+		w.postMessage({ pdfBuffer });
 	}
 </script>
 
@@ -83,12 +88,18 @@
 				<span class="text-label-lg text-on-surface">{stage}</span>
 				<span class="text-label-sm text-on-surface-variant">{percent}%</span>
 			</div>
-			<div class="w-full h-2 bg-surface-container rounded-full overflow-hidden">
+			<div class="w-full h-2 bg-surface-container rounded-full overflow-hidden mb-4">
 				<div
 					class="h-full bg-primary rounded-full transition-all duration-300"
 					style="width: {percent}%"
 				></div>
 			</div>
+			<button
+				class="w-full h-12 border-2 border-error text-error rounded-lg text-label-lg font-semibold active:scale-95 transition-transform"
+				onclick={cancel}
+			>
+				Cancel
+			</button>
 		</div>
 	{:else}
 		<Dropzone onfile={handleFile} />
