@@ -225,15 +225,15 @@
 		</div>
 	{:else}
 		<Dropzone onfile={handleFile} />
+		<div class="mt-4">
+			<label class="flex items-center gap-2 cursor-pointer">
+				<input type="checkbox" bind:checked={autoDownload} class="w-5 h-5 accent-primary" />
+				<span class="text-label-lg text-on-surface-variant">Auto-download after processing</span>
+			</label>
+		</div>
 		{#if uploadedFile && !isProcessing && !processedPdf}
 			<div class="mt-4">
 				<DetectionMethodSelector selected={detectionMethod} onchange={handleMethodChange} />
-			</div>
-			<div class="mt-4">
-				<label class="flex items-center gap-2 cursor-pointer">
-					<input type="checkbox" bind:checked={autoDownload} class="w-5 h-5 accent-primary" />
-					<span class="text-label-lg text-on-surface-variant">Auto-download after processing</span>
-				</label>
 			</div>
 			{#if detectionMethod === 'visual'}
 				<div class="mt-4">
