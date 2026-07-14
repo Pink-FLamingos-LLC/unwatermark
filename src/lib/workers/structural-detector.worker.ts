@@ -229,7 +229,17 @@ async function processPdf(pdfBuffer: ArrayBuffer) {
         contentsInfo = `single stream (${bytes.length} bytes)`;
         contentStr = new TextDecoder().decode(bytes);
       } else {
-        contentsInfo = `single stream (0 bytes from getUnencodedContents/getContents)`;
+        const streamObj = contents as Record<string, unknown>;
+        const keys = Object.keys(streamObj).concat(Object.getOwnPropertyNames(Object.getPrototypeOf(streamObj)));
+        contentsInfo = `single stream (0 bytes, keys: ${keys.join(",")})`;
+
+        if (contents.dict) {
+          const dict = contents.dict;
+          const lenVal = dict.get?.("/Length") as { asNumber?(): number } | undefined;
+          const filterVal = dict.get?.("/Filter");
+          contentsInfo += `, Length=${lenVal?.asNumber?.() ?? "unknown"}`;
+          contentsInfo += `, Filter=${filterVal ?? "unknown"}`;
+        }
       }
     }
   }
