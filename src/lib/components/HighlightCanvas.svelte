@@ -69,6 +69,8 @@
 		ctx.drawImage(bitmap, 0, 0, canvasCssWidth, canvasCssHeight);
 		bitmap.close();
 
+		console.log('[highlight] rendered from image data, canvas:', canvas.width, 'x', canvas.height);
+
 		if (gen !== renderGeneration) return;
 
 		if (overlayCanvasEl) {
@@ -131,6 +133,12 @@
 			return;
 		}
 
+		if (!hasContent) {
+			console.log('[highlight] pdfjs produced blank canvas, no fallback image data available');
+		} else {
+			console.log('[highlight] pdfjs render succeeded');
+		}
+
 		if (overlayCanvasEl) {
 			overlayCanvasEl.width = canvas.width;
 			overlayCanvasEl.height = canvas.height;
@@ -152,8 +160,10 @@
 		onclear?.();
 
 		if (imageData) {
+			console.log('[highlight] using image data, size:', imageData.length);
 			renderFromImageData(canvas, imageData, gen);
 		} else if (pdfFile) {
+			console.log('[highlight] using pdfjs for file:', pdfFile.name);
 			renderFromPdf(canvas, pdfFile, gen);
 		}
 	});
