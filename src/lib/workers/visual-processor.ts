@@ -76,25 +76,38 @@ export async function processPdfVisual(
   canvas.height = Math.round(viewport.height);
   const ctx = canvas.getContext("2d")!;
 
-  ctx.fillStyle = "rgb(128, 128, 128)";
-  ctx.fillRect(0, 0, 10, 10);
-
   await pdfPage.render({
     canvas,
     canvasContext: ctx,
     viewport,
   }).promise;
 
-  const testPixel = ctx.getImageData(5, 5, 1, 1).data;
-  const contentPixel = ctx.getImageData(100, 100, 1, 1).data;
-  console.log("[visual] test pixel (5,5):", testPixel[0], testPixel[1], testPixel[2], testPixel[3]);
-  console.log(
-    "[visual] content pixel (100,100):",
-    contentPixel[0],
-    contentPixel[1],
-    contentPixel[2],
-    contentPixel[3],
-  );
+  console.log("[visual] canvas:", canvas.width, "x", canvas.height);
+  console.log("[visual] viewport:", viewport.width, "x", viewport.height);
+
+  const dbgPixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  let nonWhiteCount = 0;
+  let minLum = 255;
+  let darkestX = 0;
+  let darkestY = 0;
+  for (let y = 0; y < canvas.height; y++) {
+    for (let x = 0; x < canvas.width; x++) {
+      const idx = (y * canvas.width + x) * 4;
+      const lum = dbgPixels[idx] * 0.299 + dbgPixels[idx + 1] * 0.587 + dbgPixels[idx + 2] * 0.114;
+      if (lum < 245) nonWhiteCount++;
+      if (lum < minLum) {
+        minLum = lum;
+        darkestX = x;
+        darkestY = y;
+      }
+    }
+  }
+  console.log("[visual] non-white pixels:", nonWhiteCount, "/", canvas.width * canvas.height);
+  console.log("[visual] min luminance:", minLum, "at", darkestX, darkestY);
+  if (nonWhiteCount > 0) {
+    const didx = (darkestY * canvas.width + darkestX) * 4;
+    console.log("[visual] darkest RGB:", dbgPixels[didx], dbgPixels[didx + 1], dbgPixels[didx + 2]);
+  }
 
   onProgress("Analyzing image pixels...", 40);
 
