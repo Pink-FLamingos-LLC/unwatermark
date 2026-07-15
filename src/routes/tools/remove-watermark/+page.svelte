@@ -27,6 +27,7 @@
 	let extractedImageBytes = $state<Uint8Array | null>(null);
 	let isExtractingImage = $state(false);
 	let debugImageCanvasEl = $state<HTMLCanvasElement | undefined>();
+	let modifiedImageBytes = $state<Uint8Array | null>(null);
 
 	function deriveCleanFilename(originalName: string): string {
 		const lastDot = originalName.lastIndexOf('.');
@@ -91,10 +92,11 @@
 				);
 				const filename = deriveCleanFilename(file.name);
 				resetState();
-				processedPdf = result;
+				processedPdf = result.processedPdf;
+				modifiedImageBytes = result.modifiedImage;
 				processedFilename = filename;
 				if (autoDownload) {
-					downloadPdf(result, filename);
+					downloadPdf(result.processedPdf, filename);
 				}
 			} catch (err) {
 				error = err instanceof Error ? err.message : 'Visual detection failed';
@@ -278,7 +280,7 @@
 
 	$effect(() => {
 		const canvas = debugImageCanvasEl;
-		const bytes = extractedImageBytes;
+		const bytes = modifiedImageBytes;
 		if (!canvas || !bytes || !debugMode) return;
 
 		(async () => {
@@ -556,9 +558,9 @@
 						{/if}
 					</div>
 				</div>
-				{#if extractedImageBytes}
+				{#if modifiedImageBytes}
 					<div class="mt-2">
-						<span class="text-on-surface-variant">Extracted image:</span>
+						<span class="text-on-surface-variant">Modified image:</span>
 						<div class="mt-1 bg-surface-container rounded-lg overflow-hidden p-1 inline-block">
 							<canvas bind:this={debugImageCanvasEl}></canvas>
 						</div>

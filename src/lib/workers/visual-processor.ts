@@ -212,12 +212,17 @@ async function extractAndDecodeFromPdfLib(
   return null;
 }
 
+export interface VisualResult {
+  processedPdf: Uint8Array;
+  modifiedImage: Uint8Array;
+}
+
 export async function processPdfVisual(
   pdfBuffer: ArrayBuffer,
   manualSelection: BoundingBox | null,
   onProgress: (stage: string, percent: number) => void,
   onDebug: (info: PdfDebugInfo) => void,
-): Promise<Uint8Array> {
+): Promise<VisualResult> {
   onProgress("Loading PDF...", 0);
 
   const pdfDoc = await PDFDocument.load(pdfBuffer, { parseSpeed: 0 });
@@ -442,5 +447,6 @@ export async function processPdfVisual(
   }
 
   onProgress("Saving PDF...", 90);
-  return pdfDoc.save();
+  const processedPdf = await pdfDoc.save();
+  return { processedPdf, modifiedImage: encoded.bytes };
 }
