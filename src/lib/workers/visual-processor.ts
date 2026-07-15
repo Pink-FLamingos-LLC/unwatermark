@@ -388,7 +388,6 @@ export async function processPdfVisual(
       Width: canvas.width,
       Height: canvas.height,
       BitsPerComponent: 8,
-      ColorSpace: "DeviceRGB",
       Filter: encoded.format === "jpeg" ? "DCTDecode" : "FlateDecode",
     });
     const imageRef = pdfDoc.context.register(newImage);
@@ -429,7 +428,6 @@ export async function processPdfVisual(
                 Width: canvas.width,
                 Height: canvas.height,
                 BitsPerComponent: 8,
-                ColorSpace: "DeviceRGB",
                 Filter: encoded.format === "jpeg" ? "DCTDecode" : "FlateDecode",
               });
               const streamRef = pdfDoc.context.register(newStream);
