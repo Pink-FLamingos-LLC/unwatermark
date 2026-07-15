@@ -420,7 +420,13 @@ export async function processPdfVisual(
           for (const [xoKey, xoValue] of xobjectDict.entries()) {
             const stream = resolveStream(pdfDoc, xoValue);
             if (stream && readStreamBytes(stream)) {
-              const newStream = pdfDoc.context.stream(encoded.bytes);
+              const newStream = pdfDoc.context.stream(encoded.bytes, {
+                Type: "XObject",
+                Subtype: "Image",
+                Width: canvas.width,
+                Height: canvas.height,
+                Filter: encoded.format === "jpeg" ? "DCTDecode" : "FlateDecode",
+              });
               const streamRef = pdfDoc.context.register(newStream);
               xobjectDict.set(xoKey, streamRef);
               break;
