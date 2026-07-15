@@ -387,6 +387,8 @@ export async function processPdfVisual(
       Subtype: "Image",
       Width: canvas.width,
       Height: canvas.height,
+      BitsPerComponent: 8,
+      Filter: encoded.format === "jpeg" ? "DCTDecode" : "FlateDecode",
     });
     const imageRef = pdfDoc.context.register(newImage);
 
@@ -425,6 +427,7 @@ export async function processPdfVisual(
                 Subtype: "Image",
                 Width: canvas.width,
                 Height: canvas.height,
+                BitsPerComponent: 8,
                 Filter: encoded.format === "jpeg" ? "DCTDecode" : "FlateDecode",
               });
               const streamRef = pdfDoc.context.register(newStream);
