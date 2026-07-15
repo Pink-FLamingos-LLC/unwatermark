@@ -117,15 +117,15 @@
 		if (gen !== renderGeneration) return;
 
 		const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-		let hasContent = false;
+		let sampled = 0;
+		let nonWhite = 0;
 		const step = Math.max(1, Math.floor(imgData.length / (4 * 5000)));
 		for (let i = 0; i < imgData.length; i += 4 * step) {
+			sampled++;
 			const lum = imgData[i] * 0.299 + imgData[i + 1] * 0.587 + imgData[i + 2] * 0.114;
-			if (lum < 245) {
-				hasContent = true;
-				break;
-			}
+			if (lum < 240) nonWhite++;
 		}
+		const hasContent = sampled > 0 && nonWhite / sampled > 0.01;
 
 		if (!hasContent && imageData) {
 			console.log('[highlight] pdfjs produced blank canvas, falling back to image data');

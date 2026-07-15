@@ -119,11 +119,14 @@ function hasCanvasContent(canvas: HTMLCanvasElement): boolean {
   const ctx = canvas.getContext("2d")!;
   const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
   const step = Math.max(1, Math.floor(data.length / (4 * 10000)));
+  let sampled = 0;
+  let nonWhite = 0;
   for (let i = 0; i < data.length; i += 4 * step) {
+    sampled++;
     const lum = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-    if (lum < 245) return true;
+    if (lum < 240) nonWhite++;
   }
-  return false;
+  return sampled > 0 && nonWhite / sampled > 0.01;
 }
 
 async function tryRenderWithPdfjs(pdfBuffer: ArrayBuffer): Promise<HTMLCanvasElement | null> {
