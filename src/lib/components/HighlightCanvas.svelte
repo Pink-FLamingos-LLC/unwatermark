@@ -114,6 +114,23 @@
 		await page.render({ canvas: null, canvasContext: ctx, viewport: scaledVp }).promise;
 		if (gen !== renderGeneration) return;
 
+		const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+		let hasContent = false;
+		const step = Math.max(1, Math.floor(imgData.length / (4 * 5000)));
+		for (let i = 0; i < imgData.length; i += 4 * step) {
+			const lum = imgData[i] * 0.299 + imgData[i + 1] * 0.587 + imgData[i + 2] * 0.114;
+			if (lum < 245) {
+				hasContent = true;
+				break;
+			}
+		}
+
+		if (!hasContent && imageData) {
+			console.log('[highlight] pdfjs produced blank canvas, falling back to image data');
+			await renderFromImageData(canvas, imageData, gen);
+			return;
+		}
+
 		if (overlayCanvasEl) {
 			overlayCanvasEl.width = canvas.width;
 			overlayCanvasEl.height = canvas.height;

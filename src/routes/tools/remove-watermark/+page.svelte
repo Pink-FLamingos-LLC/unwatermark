@@ -332,18 +332,10 @@
 						<div class="flex items-center justify-center h-32 bg-surface-container rounded-xl">
 							<span class="text-label-lg text-on-surface-variant">Extracting image...</span>
 						</div>
-					{:else if extractedImageBytes}
-						<HighlightCanvas
-							imageData={extractedImageBytes}
-							pageWidth={pdfPageWidth}
-							pageHeight={pdfPageHeight}
-							onselect={handleSelection}
-							onclear={handleSelectionClear}
-							onpagedimensions={handlePageDimensions}
-						/>
 					{:else if uploadedFile}
 						<HighlightCanvas
 							pdfFile={uploadedFile}
+							imageData={extractedImageBytes}
 							pageWidth={pdfPageWidth}
 							pageHeight={pdfPageHeight}
 							onselect={handleSelection}

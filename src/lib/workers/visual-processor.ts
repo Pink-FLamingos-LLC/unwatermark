@@ -115,6 +115,100 @@ async function paintOverRegion(
   ctx.putImageData(imageData, region.x, region.y);
 }
 
+function hasCanvasContent(canvas: HTMLCanvasElement): boolean {
+  const ctx = canvas.getContext("2d")!;
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  const step = Math.max(1, Math.floor(data.length / (4 * 10000)));
+  for (let i = 0; i < data.length; i += 4 * step) {
+    const lum = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+    if (lum < 245) return true;
+  }
+  return false;
+}
+
+async function tryRenderWithPdfjs(pdfBuffer: ArrayBuffer): Promise<HTMLCanvasElement | null> {
+  try {
+    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const workerUrl = (await import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url")).default;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+
+    const doc = await pdfjsLib.getDocument({ data: pdfBuffer.slice(0) }).promise;
+    const page = await doc.getPage(1);
+    const baseViewport = page.getViewport({ scale: 1 });
+    const maxDim = Math.max(baseViewport.width, baseViewport.height);
+    const scale = Math.max(1, Math.min(4, Math.ceil(2000 / maxDim)));
+    const viewport = page.getViewport({ scale });
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    const ctx = canvas.getContext("2d")!;
+
+    await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+
+    if (hasCanvasContent(canvas)) {
+      console.log("[visual] pdfjs render succeeded, canvas:", canvas.width, "x", canvas.height);
+      return canvas;
+    }
+
+    console.log("[visual] pdfjs render produced blank canvas, falling back to pdf-lib");
+    return null;
+  } catch (err) {
+    console.log("[visual] pdfjs render failed:", err, "- falling back to pdf-lib");
+    return null;
+  }
+}
+
+async function extractAndDecodeFromPdfLib(
+  pdfDoc: PDFDocument,
+): Promise<{ canvas: HTMLCanvasElement; xobjectName: string } | null> {
+  const pages = pdfDoc.getPages();
+  if (pages.length === 0) return null;
+
+  const page = pages[0];
+  const pageNode = page.node as unknown as PDFPageNode;
+  const resources = pageNode.Resources();
+  if (!resources) return null;
+
+  let xobjectDict: { entries?(): Iterable<[unknown, unknown]> } | undefined;
+  if (resources.entries) {
+    for (const [key, value] of resources.entries()) {
+      if (decodePdfName(key) === "XObject") {
+        xobjectDict = value as { entries?(): Iterable<[unknown, unknown]> };
+        break;
+      }
+    }
+  }
+  if (!xobjectDict?.entries) return null;
+
+  for (const [key, value] of xobjectDict.entries()) {
+    const name = decodePdfName(key);
+    const stream = resolveStream(pdfDoc, value);
+    if (!stream) continue;
+    const bytes = readStreamBytes(stream);
+    if (!bytes || bytes.length < 100) continue;
+
+    try {
+      const canvas = await decodeImageToCanvas(bytes);
+      console.log(
+        "[visual] pdf-lib extracted XObject",
+        name,
+        "size:",
+        bytes.length,
+        "-> canvas:",
+        canvas.width,
+        "x",
+        canvas.height,
+      );
+      return { canvas, xobjectName: name };
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
 export async function processPdfVisual(
   pdfBuffer: ArrayBuffer,
   manualSelection: BoundingBox | null,
@@ -136,59 +230,29 @@ export async function processPdfVisual(
   const pageWidth = Number(mediaBox.get(2));
   const pageHeight = Number(mediaBox.get(3));
 
-  const resources = pageNode.Resources();
-  if (!resources) {
-    throw new Error("Page has no resources");
-  }
+  onProgress("Rendering page...", 10);
 
-  let xobjectDict: { entries?(): Iterable<[unknown, unknown]> } | undefined;
-  if (resources.entries) {
-    for (const [key, value] of resources.entries()) {
-      if (decodePdfName(key) === "XObject") {
-        xobjectDict = value as { entries?(): Iterable<[unknown, unknown]> };
-        break;
-      }
+  let canvas: HTMLCanvasElement;
+  let renderSource: string;
+
+  const pdfjsCanvas = await tryRenderWithPdfjs(pdfBuffer);
+  if (pdfjsCanvas) {
+    canvas = pdfjsCanvas;
+    renderSource = "pdfjs";
+  } else {
+    const result = await extractAndDecodeFromPdfLib(pdfDoc);
+    if (!result) {
+      throw new Error(
+        "Could not render page: pdfjs produced blank canvas and no image XObjects found",
+      );
     }
-  }
-  if (!xobjectDict?.entries) {
-    throw new Error("No XObjects found on page");
-  }
-
-  onProgress("Extracting image XObjects...", 10);
-
-  const xobjects: { name: string; bytes: Uint8Array; stream: PDFStreamLike }[] = [];
-  for (const [key, value] of xobjectDict.entries()) {
-    const name = decodePdfName(key);
-    const stream = resolveStream(pdfDoc, value);
-    if (!stream) continue;
-    const bytes = readStreamBytes(stream);
-    if (!bytes || bytes.length < 100) continue;
-    xobjects.push({ name, bytes, stream });
+    canvas = result.canvas;
+    renderSource = `pdf-lib (${result.xobjectName})`;
   }
 
-  if (xobjects.length === 0) {
-    throw new Error("No image XObject streams found");
-  }
-
-  console.log("[visual] found", xobjects.length, "XObject streams");
-  for (const xo of xobjects) {
-    console.log(
-      "[visual] XObject",
-      xo.name,
-      "size:",
-      xo.bytes.length,
-      "first bytes:",
-      xo.bytes.slice(0, 8),
-    );
-  }
-
-  onProgress("Decoding image...", 30);
-
-  const xobject = xobjects[0];
-  const canvas = await decodeImageToCanvas(xobject.bytes);
   const ctx = canvas.getContext("2d")!;
 
-  console.log("[visual] decoded image:", canvas.width, "x", canvas.height);
+  console.log("[visual] render source:", renderSource, "canvas:", canvas.width, "x", canvas.height);
 
   onProgress("Analyzing pixels...", 40);
 
@@ -235,7 +299,7 @@ export async function processPdfVisual(
       pageWidth,
       pageHeight,
       resources: {},
-      xobjectNames: xobjects.map((x) => x.name),
+      xobjectNames: [],
       xobjectTypes: {},
       contentStreamLength: 0,
       imagePlacements: [],
@@ -249,7 +313,7 @@ export async function processPdfVisual(
         bgColor,
         imageFormat: "none",
         imageSizeBytes: 0,
-        diagnostic: `XObject: ${xobject.name} (${xobject.bytes.length} bytes), non-white: ${nonWhiteCount}/${totalSampled}, lum: ${minLum.toFixed(0)}-${maxLum.toFixed(0)}`,
+        diagnostic: `source: ${renderSource}, non-white: ${nonWhiteCount}/${totalSampled}, lum: ${minLum.toFixed(0)}-${maxLum.toFixed(0)}`,
       },
     });
     throw new Error(
@@ -264,7 +328,7 @@ export async function processPdfVisual(
     pageWidth,
     pageHeight,
     resources: {},
-    xobjectNames: xobjects.map((x) => x.name),
+    xobjectNames: [],
     xobjectTypes: {},
     contentStreamLength: 0,
     imagePlacements: [],
@@ -292,7 +356,7 @@ export async function processPdfVisual(
     pageWidth,
     pageHeight,
     resources: {},
-    xobjectNames: xobjects.map((x) => x.name),
+    xobjectNames: [],
     xobjectTypes: {},
     contentStreamLength: 0,
     imagePlacements: [],
@@ -311,15 +375,55 @@ export async function processPdfVisual(
 
   onProgress("Replacing image in PDF...", 80);
 
-  const newStream = pdfDoc.context.stream(encoded.bytes);
-  const streamRef = pdfDoc.context.register(newStream);
+  if (renderSource === "pdfjs") {
+    const newImage = pdfDoc.context.stream(encoded.bytes, {
+      Type: "XObject",
+      Subtype: "Image",
+      Width: canvas.width,
+      Height: canvas.height,
+    });
+    const imageRef = pdfDoc.context.register(newImage);
 
-  const xobjectDictObj = resources.get(pdfDoc.context.obj("/XObject"));
-  if (xobjectDictObj) {
-    (xobjectDictObj as { set(key: unknown, value: unknown): void }).set(
-      pdfDoc.context.obj(`/${xobject.name}`),
-      streamRef,
-    );
+    const contentStr = `q ${pageWidth} 0 0 ${pageHeight} 0 0 cm /img Do Q`;
+    const contentBytes = new TextEncoder().encode(contentStr);
+    const contentStream = pdfDoc.context.stream(contentBytes);
+    const contentRef = pdfDoc.context.register(contentStream);
+
+    pageNode.set(pdfDoc.context.obj("Contents"), pdfDoc.context.obj([contentRef]));
+
+    const resources = pageNode.Resources();
+    if (resources?.entries) {
+      for (const [key, value] of resources.entries()) {
+        if (decodePdfName(key) === "XObject") {
+          const xobjectDict = value as any;
+          const existing = xobjectDict.entries ? [...xobjectDict.entries()] : [];
+          for (const [k] of existing) {
+            xobjectDict.delete?.(k);
+          }
+          xobjectDict.set(pdfDoc.context.obj("/img"), imageRef);
+          break;
+        }
+      }
+    }
+  } else {
+    const resources = pageNode.Resources();
+    if (resources?.entries) {
+      for (const [key, value] of resources.entries()) {
+        if (decodePdfName(key) === "XObject") {
+          const xobjectDict = value as any;
+          for (const [xoKey, xoValue] of xobjectDict.entries()) {
+            const stream = resolveStream(pdfDoc, xoValue);
+            if (stream && readStreamBytes(stream)) {
+              const newStream = pdfDoc.context.stream(encoded.bytes);
+              const streamRef = pdfDoc.context.register(newStream);
+              xobjectDict.set(xoKey, streamRef);
+              break;
+            }
+          }
+          break;
+        }
+      }
+    }
   }
 
   onProgress("Saving PDF...", 90);
