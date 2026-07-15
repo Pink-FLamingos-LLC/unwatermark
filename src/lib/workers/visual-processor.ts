@@ -238,19 +238,22 @@ export async function processPdfVisual(
   let canvas: HTMLCanvasElement;
   let renderSource: string;
 
-  const pdfjsCanvas = await tryRenderWithPdfjs(pdfBuffer);
-  if (pdfjsCanvas) {
-    canvas = pdfjsCanvas;
-    renderSource = "pdfjs";
+  const pdfLibResult = await extractAndDecodeFromPdfLib(pdfDoc);
+  if (pdfLibResult) {
+    canvas = pdfLibResult.canvas;
+    renderSource = `pdf-lib (${pdfLibResult.xobjectName})`;
+    console.log("[visual] using pdf-lib extracted image:", pdfLibResult.xobjectName);
   } else {
-    const result = await extractAndDecodeFromPdfLib(pdfDoc);
-    if (!result) {
+    const pdfjsCanvas = await tryRenderWithPdfjs(pdfBuffer);
+    if (pdfjsCanvas) {
+      canvas = pdfjsCanvas;
+      renderSource = "pdfjs";
+      console.log("[visual] using pdfjs render (no extractable images found)");
+    } else {
       throw new Error(
-        "Could not render page: pdfjs produced blank canvas and no image XObjects found",
+        "Could not render page: no image XObjects found and pdfjs produced blank canvas",
       );
     }
-    canvas = result.canvas;
-    renderSource = `pdf-lib (${result.xobjectName})`;
   }
 
   const ctx = canvas.getContext("2d")!;
