@@ -254,7 +254,7 @@
 				<span class="text-label-lg text-on-surface-variant">Auto-download after processing</span>
 			</label>
 		</div>
-		{#if uploadedFile && !isProcessing && !processedPdf}
+		{#if uploadedFile && !isProcessing}
 			<div class="mt-4">
 				<DetectionMethodSelector selected={detectionMethod} onchange={handleMethodChange} />
 			</div>
