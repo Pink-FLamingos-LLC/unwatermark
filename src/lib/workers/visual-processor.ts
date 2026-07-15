@@ -76,11 +76,22 @@ export async function processPdfVisual(
   canvas.height = Math.round(viewport.height);
   const ctx = canvas.getContext("2d")!;
 
-  await pdfPage.render({
-    canvas,
-    canvasContext: ctx,
-    viewport,
-  }).promise;
+  const ops = await pdfPage.getOperatorList();
+  console.log("[visual] operator list length:", ops.fnArray.length);
+  console.log("[visual] first 20 ops:", ops.fnArray.slice(0, 20));
+  console.log("[visual] page viewport:", pdfPage.view);
+
+  try {
+    const renderTask = pdfPage.render({
+      canvas,
+      canvasContext: ctx,
+      viewport,
+    });
+    await renderTask.promise;
+    console.log("[visual] render completed successfully");
+  } catch (err) {
+    console.error("[visual] render error:", err);
+  }
 
   console.log("[visual] canvas:", canvas.width, "x", canvas.height);
   console.log("[visual] viewport:", viewport.width, "x", viewport.height);
