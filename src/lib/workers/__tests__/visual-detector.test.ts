@@ -89,72 +89,95 @@ describe("detectWatermarkRegion", () => {
     expect(detectWatermarkRegion(data, w, h)).toBeNull();
   });
 
-  it("detects a dark watermark on white background", () => {
+  it("returns null for a single blob with no Card Block context", () => {
     const w = 200;
     const h = 200;
     const data = makeImageData(w, h);
     fillRect(data, w, 50, 50, 40, 30, [30, 30, 30]);
 
     const result = detectWatermarkRegion(data, w, h);
-    expect(result).not.toBeNull();
-    expect(result!.x).toBeGreaterThanOrEqual(48);
-    expect(result!.x).toBeLessThanOrEqual(52);
-    expect(result!.y).toBeGreaterThanOrEqual(48);
-    expect(result!.y).toBeLessThanOrEqual(52);
-    expect(result!.width).toBeGreaterThanOrEqual(36);
-    expect(result!.width).toBeLessThanOrEqual(44);
-    expect(result!.height).toBeGreaterThanOrEqual(26);
-    expect(result!.height).toBeLessThanOrEqual(34);
+    expect(result).toBeNull();
   });
 
-  it("ignores small noise (below MIN_COMPONENT_AREA)", () => {
+  it("detects watermark with a monolithic Card Block", () => {
+    const w = 400;
+    const h = 400;
+    const data = makeImageData(w, h);
+    fillRect(data, w, 50, 55, 300, 300, [200, 150, 100]);
+    fillRect(data, w, 10, 10, 50, 40, [30, 30, 30]);
+
+    const result = detectWatermarkRegion(data, w, h);
+    expect(result).not.toBeNull();
+    expect(result!.x).toBeGreaterThanOrEqual(8);
+    expect(result!.x).toBeLessThanOrEqual(12);
+    expect(result!.y).toBeGreaterThanOrEqual(8);
+    expect(result!.y).toBeLessThanOrEqual(12);
+    expect(result!.width).toBeGreaterThanOrEqual(46);
+    expect(result!.width).toBeLessThanOrEqual(54);
+    expect(result!.height).toBeGreaterThanOrEqual(36);
+    expect(result!.height).toBeLessThanOrEqual(44);
+  });
+
+  it("detects watermark among clustered card blobs", () => {
+    const w = 500;
+    const h = 500;
+    const data = makeImageData(w, h);
+
+    fillRect(data, w, 10, 10, 80, 80, [200, 150, 100]);
+    fillRect(data, w, 95, 10, 80, 80, [200, 150, 100]);
+    fillRect(data, w, 10, 95, 80, 80, [200, 150, 100]);
+    fillRect(data, w, 95, 95, 80, 80, [200, 150, 100]);
+
+    fillRect(data, w, 400, 400, 60, 50, [50, 50, 50]);
+
+    const result = detectWatermarkRegion(data, w, h);
+    expect(result).not.toBeNull();
+    expect(result!.width * result!.height).toBeGreaterThanOrEqual(60 * 50 - 10);
+  });
+
+  it("picks the largest non-Card-Block blob as watermark", () => {
     const w = 200;
     const h = 200;
     const data = makeImageData(w, h);
-    fillRect(data, w, 50, 50, 2, 2, [0, 0, 0]);
+    fillRect(data, w, 100, 100, 50, 50, [50, 50, 50]);
+    fillRect(data, w, 10, 10, 20, 20, [100, 100, 100]);
+
+    const result = detectWatermarkRegion(data, w, h);
+    expect(result).not.toBeNull();
+    expect(result!.width * result!.height).toBeGreaterThanOrEqual(20 * 20 - 2);
+  });
+
+  it("returns null when remaining blobs are below the 1% area threshold", () => {
+    const w = 200;
+    const h = 200;
+    const data = makeImageData(w, h);
+    fillRect(data, w, 25, 25, 150, 150, [200, 150, 100]);
+    fillRect(data, w, 180, 10, 5, 5, [30, 30, 30]);
 
     const result = detectWatermarkRegion(data, w, h);
     expect(result).toBeNull();
   });
 
-  it("detects watermark among card regions", () => {
-    const w = 400;
-    const h = 400;
+  it("detects colored watermark with a Card Block present", () => {
+    const w = 350;
+    const h = 300;
     const data = makeImageData(w, h);
-
-    fillRect(data, w, 10, 10, 80, 80, [200, 150, 100]);
-    fillRect(data, w, 110, 10, 80, 80, [200, 150, 100]);
-    fillRect(data, w, 10, 110, 80, 80, [200, 150, 100]);
-    fillRect(data, w, 110, 110, 80, 80, [200, 150, 100]);
-
-    fillRect(data, w, 250, 250, 100, 60, [50, 50, 50]);
+    fillRect(data, w, 50, 50, 200, 200, [200, 150, 100]);
+    fillRect(data, w, 260, 20, 60, 40, [0, 100, 200]);
 
     const result = detectWatermarkRegion(data, w, h);
     expect(result).not.toBeNull();
-    expect(result!.width * result!.height).toBeGreaterThanOrEqual(100 * 60 - 10);
+    expect(result!.width).toBeGreaterThanOrEqual(56);
+    expect(result!.height).toBeGreaterThanOrEqual(36);
   });
 
-  it("picks the largest region when multiple non-white regions exist", () => {
-    const w = 200;
-    const h = 200;
+  it("returns null when only small noise specks exist outside Card Block", () => {
+    const w = 300;
+    const h = 300;
     const data = makeImageData(w, h);
-    fillRect(data, w, 10, 10, 20, 20, [100, 100, 100]);
-    fillRect(data, w, 100, 100, 50, 50, [50, 50, 50]);
+    fillRect(data, w, 25, 25, 250, 250, [200, 150, 100]);
 
     const result = detectWatermarkRegion(data, w, h);
-    expect(result).not.toBeNull();
-    expect(result!.width * result!.height).toBeGreaterThanOrEqual(50 * 50 - 2);
-  });
-
-  it("detects colored watermark on white background", () => {
-    const w = 200;
-    const h = 200;
-    const data = makeImageData(w, h);
-    fillRect(data, w, 30, 30, 100, 50, [0, 100, 200]);
-
-    const result = detectWatermarkRegion(data, w, h);
-    expect(result).not.toBeNull();
-    expect(result!.width).toBeGreaterThanOrEqual(96);
-    expect(result!.height).toBeGreaterThanOrEqual(46);
+    expect(result).toBeNull();
   });
 });
