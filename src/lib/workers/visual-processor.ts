@@ -76,11 +76,25 @@ export async function processPdfVisual(
   canvas.height = Math.round(viewport.height);
   const ctx = canvas.getContext("2d")!;
 
+  ctx.fillStyle = "rgb(128, 128, 128)";
+  ctx.fillRect(0, 0, 10, 10);
+
   await pdfPage.render({
     canvas,
     canvasContext: ctx,
     viewport,
   }).promise;
+
+  const testPixel = ctx.getImageData(5, 5, 1, 1).data;
+  const contentPixel = ctx.getImageData(100, 100, 1, 1).data;
+  console.log("[visual] test pixel (5,5):", testPixel[0], testPixel[1], testPixel[2], testPixel[3]);
+  console.log(
+    "[visual] content pixel (100,100):",
+    contentPixel[0],
+    contentPixel[1],
+    contentPixel[2],
+    contentPixel[3],
+  );
 
   onProgress("Analyzing image pixels...", 40);
 
