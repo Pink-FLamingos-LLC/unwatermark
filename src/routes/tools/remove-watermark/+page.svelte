@@ -4,6 +4,7 @@
 	import HighlightCanvas from '$lib/components/HighlightCanvas.svelte';
 	import { processPdfVisual } from '$lib/workers/visual-processor';
 	import type { WorkerMessage, PdfDebugInfo, DetectionMethod, BoundingBox } from '$lib/workers/types';
+	import { PDFDocument } from 'pdf-lib';
 
 	let stage = $state<string | null>(null);
 	let percent = $state(0);
@@ -23,6 +24,8 @@
 	let processedFilename = $state<string>('');
 	let previewCanvasEl = $state<HTMLCanvasElement | undefined>();
 	let isRenderingPreview = $state(false);
+	let extractedImageBytes = $state<Uint8Array | null>(null);
+	let isExtractingImage = $state(false);
 
 	function deriveCleanFilename(originalName: string): string {
 		const lastDot = originalName.lastIndexOf('.');
@@ -216,7 +219,61 @@
 		uploadedFile = null;
 		error = null;
 		manualSelection = null;
+		extractedImageBytes = null;
 	}
+
+	async function extractImage() {
+		if (!uploadedFile) return;
+		isExtractingImage = true;
+		try {
+			const buf = await uploadedFile.arrayBuffer();
+			const pdfDoc = await PDFDocument.load(buf, { parseSpeed: 0 });
+			const page = pdfDoc.getPages()[0];
+			if (!page) return;
+			const resources = (page.node as any).Resources?.();
+			if (!resources) return;
+			let xobjectDict: any;
+			for (const [key, value] of resources.entries()) {
+				const name = typeof key === 'string' ? key : (key as any).decodeText?.() ?? String(key);
+				if (name.replace(/^\//, '') === 'XObject') {
+					xobjectDict = value;
+					break;
+				}
+			}
+			if (!xobjectDict?.entries) return;
+			for (const [, value] of xobjectDict.entries()) {
+				const stream = (pdfDoc.context as any).lookup?.(value) ?? value;
+				if (stream?.getUnencodedContents) {
+					const bytes = stream.getUnencodedContents();
+					if (bytes && bytes.length > 100) {
+						extractedImageBytes = bytes;
+						isExtractingImage = false;
+						return;
+					}
+				}
+				if (stream?.getContents) {
+					const bytes = stream.getContents();
+					if (bytes && bytes.length > 100) {
+						extractedImageBytes = bytes;
+						isExtractingImage = false;
+						return;
+					}
+				}
+			}
+		} catch (err) {
+			console.error('Image extraction error:', err);
+		}
+		isExtractingImage = false;
+	}
+
+	$effect(() => {
+		if (advancedMode && uploadedFile && !extractedImageBytes) {
+			extractImage();
+		}
+		if (!advancedMode) {
+			extractedImageBytes = null;
+		}
+	});
 </script>
 
 <svelte:head>
@@ -271,14 +328,29 @@
 			{/if}
 			{#if advancedMode && detectionMethod === 'visual'}
 				<div class="mt-4">
-					<HighlightCanvas
-						pdfFile={uploadedFile}
-						pageWidth={pdfPageWidth}
-						pageHeight={pdfPageHeight}
-						onselect={handleSelection}
-						onclear={handleSelectionClear}
-						onpagedimensions={handlePageDimensions}
-					/>
+					{#if isExtractingImage}
+						<div class="flex items-center justify-center h-32 bg-surface-container rounded-xl">
+							<span class="text-label-lg text-on-surface-variant">Extracting image...</span>
+						</div>
+					{:else if extractedImageBytes}
+						<HighlightCanvas
+							imageData={extractedImageBytes}
+							pageWidth={pdfPageWidth}
+							pageHeight={pdfPageHeight}
+							onselect={handleSelection}
+							onclear={handleSelectionClear}
+							onpagedimensions={handlePageDimensions}
+						/>
+					{:else if uploadedFile}
+						<HighlightCanvas
+							pdfFile={uploadedFile}
+							pageWidth={pdfPageWidth}
+							pageHeight={pdfPageHeight}
+							onselect={handleSelection}
+							onclear={handleSelectionClear}
+							onpagedimensions={handlePageDimensions}
+						/>
+					{/if}
 				</div>
 				{#if manualSelection}
 					<button

@@ -7,7 +7,8 @@
 	const MIN_DRAG_PX = 3;
 
 	interface Props {
-		pdfFile: File;
+		pdfFile?: File;
+		imageData?: Uint8Array;
 		pageWidth: number;
 		pageHeight: number;
 		onselect?: (box: BoundingBox) => void;
@@ -15,7 +16,15 @@
 		onpagedimensions?: (width: number, height: number) => void;
 	}
 
-	let { pdfFile, pageWidth, pageHeight, onselect, onclear, onpagedimensions }: Props = $props();
+	let {
+		pdfFile,
+		imageData,
+		pageWidth,
+		pageHeight,
+		onselect,
+		onclear,
+		onpagedimensions
+	}: Props = $props();
 
 	let containerEl: HTMLDivElement | undefined = $state();
 	let pdfCanvasEl: HTMLCanvasElement | undefined = $state();
@@ -31,8 +40,93 @@
 	let canvasCssWidth = $state(0);
 	let canvasCssHeight = $state(0);
 
+	async function renderFromImageData(
+		canvas: HTMLCanvasElement,
+		data: Uint8Array,
+		gen: number
+	) {
+		const blob = new Blob([data.slice().buffer as ArrayBuffer]);
+		const bitmap = await createImageBitmap(blob);
+
+		if (gen !== renderGeneration) return;
+
+		onpagedimensions?.(bitmap.width, bitmap.height);
+
+		const dpr = window.devicePixelRatio || 1;
+		const containerW = containerEl?.clientWidth ?? 800;
+		const scale = containerW / bitmap.width;
+
+		canvasCssWidth = bitmap.width * scale;
+		canvasCssHeight = bitmap.height * scale;
+
+		canvas.width = Math.round(canvasCssWidth * dpr);
+		canvas.height = Math.round(canvasCssHeight * dpr);
+		canvas.style.width = `${canvasCssWidth}px`;
+		canvas.style.height = `${canvasCssHeight}px`;
+
+		const ctx = canvas.getContext('2d')!;
+		ctx.scale(dpr, dpr);
+		ctx.drawImage(bitmap, 0, 0, canvasCssWidth, canvasCssHeight);
+		bitmap.close();
+
+		if (gen !== renderGeneration) return;
+
+		if (overlayCanvasEl) {
+			overlayCanvasEl.width = canvas.width;
+			overlayCanvasEl.height = canvas.height;
+			overlayCanvasEl.style.width = canvas.style.width;
+			overlayCanvasEl.style.height = canvas.style.height;
+		}
+
+		isLoading = false;
+	}
+
+	async function renderFromPdf(canvas: HTMLCanvasElement, file: File, gen: number) {
+		const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+		const workerUrl = (await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')).default;
+		pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+
+		const buf = await file.arrayBuffer();
+		const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+		const page = await doc.getPage(1);
+		const vp = page.getViewport({ scale: 1 });
+
+		const dpr = window.devicePixelRatio || 1;
+		const containerW = containerEl?.clientWidth ?? 800;
+		const scale = containerW / vp.width;
+		const scaledVp = page.getViewport({ scale });
+
+		if (gen !== renderGeneration) return;
+
+		onpagedimensions?.(vp.width, vp.height);
+
+		canvasCssWidth = scaledVp.width;
+		canvasCssHeight = scaledVp.height;
+
+		canvas.width = Math.round(scaledVp.width * dpr);
+		canvas.height = Math.round(scaledVp.height * dpr);
+		canvas.style.width = `${scaledVp.width}px`;
+		canvas.style.height = `${scaledVp.height}px`;
+
+		const ctx = canvas.getContext('2d')!;
+		ctx.scale(dpr, dpr);
+
+		await page.render({ canvas: null, canvasContext: ctx, viewport: scaledVp }).promise;
+		if (gen !== renderGeneration) return;
+
+		if (overlayCanvasEl) {
+			overlayCanvasEl.width = canvas.width;
+			overlayCanvasEl.height = canvas.height;
+			overlayCanvasEl.style.width = canvas.style.width;
+			overlayCanvasEl.style.height = canvas.style.height;
+		}
+
+		isLoading = false;
+	}
+
 	$effect(() => {
 		void pdfFile;
+		void imageData;
 		const canvas = pdfCanvasEl;
 		if (!canvas) return;
 		const gen = ++renderGeneration;
@@ -40,48 +134,11 @@
 		selection = null;
 		onclear?.();
 
-		(async () => {
-			const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
-			const workerUrl = (await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')).default;
-			pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
-
-			const buf = await pdfFile.arrayBuffer();
-			const doc = await pdfjsLib.getDocument({ data: buf }).promise;
-			const page = await doc.getPage(1);
-			const vp = page.getViewport({ scale: 1 });
-
-			const dpr = window.devicePixelRatio || 1;
-			const containerW = containerEl?.clientWidth ?? 800;
-			const scale = containerW / vp.width;
-			const scaledVp = page.getViewport({ scale });
-
-			if (gen !== renderGeneration) return;
-
-			onpagedimensions?.(vp.width, vp.height);
-
-			canvasCssWidth = scaledVp.width;
-			canvasCssHeight = scaledVp.height;
-
-			canvas.width = Math.round(scaledVp.width * dpr);
-			canvas.height = Math.round(scaledVp.height * dpr);
-			canvas.style.width = `${scaledVp.width}px`;
-			canvas.style.height = `${scaledVp.height}px`;
-
-			const ctx = canvas.getContext('2d')!;
-			ctx.scale(dpr, dpr);
-
-			await page.render({ canvas: null, canvasContext: ctx, viewport: scaledVp }).promise;
-			if (gen !== renderGeneration) return;
-
-			if (overlayCanvasEl) {
-				overlayCanvasEl.width = canvas.width;
-				overlayCanvasEl.height = canvas.height;
-				overlayCanvasEl.style.width = canvas.style.width;
-				overlayCanvasEl.style.height = canvas.style.height;
-			}
-
-			isLoading = false;
-		})();
+		if (imageData) {
+			renderFromImageData(canvas, imageData, gen);
+		} else if (pdfFile) {
+			renderFromPdf(canvas, pdfFile, gen);
+		}
 	});
 
 	function canvasToPdf(cssX: number, cssY: number): { pdfX: number; pdfY: number } {
