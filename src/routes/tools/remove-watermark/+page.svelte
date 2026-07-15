@@ -3,7 +3,7 @@
 	import DetectionMethodSelector from '$lib/components/DetectionMethodSelector.svelte';
 	import HighlightCanvas from '$lib/components/HighlightCanvas.svelte';
 	import { processPdfVisual } from '$lib/workers/visual-processor';
-	import type { WorkerMessage, PdfDebugInfo, DetectionMethod, BoundingBox } from '$lib/workers/types';
+	import type { WorkerMessage, PdfDebugInfo, DetectionMethod, BoundingBox, WatermarkDetectionConfig } from '$lib/workers/types';
 	import { PDFDocument } from 'pdf-lib';
 
 	let stage = $state<string | null>(null);
@@ -28,6 +28,23 @@
 	let isExtractingImage = $state(false);
 	let debugImageCanvasEl = $state<HTMLCanvasElement | undefined>();
 	let modifiedImageBytes = $state<Uint8Array | null>(null);
+	let expandedComponentStages = $state<Record<string, boolean>>({});
+	let detectionParamsExpanded = $state(false);
+	let cardProximityPct = $state(4);
+	let wmProximityPct = $state(4);
+	let minAreaRatioPct = $state(0.1);
+
+	function getDetectionConfig(): WatermarkDetectionConfig {
+		return {
+			cardProximityFactor: cardProximityPct / 100,
+			wmProximityFactor: wmProximityPct / 100,
+			minWatermarkAreaRatio: minAreaRatioPct / 100,
+		};
+	}
+
+	function toggleComponentStage(key: string) {
+		expandedComponentStages = { ...expandedComponentStages, [key]: !expandedComponentStages[key] };
+	}
 
 	function deriveCleanFilename(originalName: string): string {
 		const lastDot = originalName.lastIndexOf('.');
@@ -84,12 +101,13 @@
 
 		if (detectionMethod === 'visual') {
 			try {
-				const result = await processPdfVisual(
-					pdfBuffer,
-					selection ?? null,
-					(s, p) => { stage = s; percent = p; },
-					(info) => { debugInfo = info; }
-				);
+			const result = await processPdfVisual(
+				pdfBuffer,
+				selection ?? null,
+				(s, p) => { stage = s; percent = p; },
+				(info) => { debugInfo = info; },
+				getDetectionConfig(),
+			);
 				const filename = deriveCleanFilename(file.name);
 				resetState();
 				processedPdf = result.processedPdf;
@@ -356,7 +374,7 @@
 					{:else if uploadedFile}
 						<HighlightCanvas
 							pdfFile={uploadedFile}
-							imageData={extractedImageBytes}
+							imageData={extractedImageBytes ?? undefined}
 							pageWidth={pdfPageWidth}
 							pageHeight={pdfPageHeight}
 							onselect={handleSelection}
@@ -431,6 +449,59 @@
 			<input type="checkbox" bind:checked={debugMode} class="w-5 h-5 accent-primary" />
 			<span class="text-label-lg text-on-surface-variant">Debug mode</span>
 		</label>
+	</div>
+
+	<div class="mt-2">
+		<button
+			class="flex items-center gap-1.5 text-label-sm text-on-surface-variant hover:text-on-surface cursor-pointer bg-transparent border-none p-0"
+			onclick={() => detectionParamsExpanded = !detectionParamsExpanded}
+		>
+			<span class="inline-block transition-transform" class:rotate-90={detectionParamsExpanded}>&#9654;</span>
+			Detection Parameters
+		</button>
+		{#if detectionParamsExpanded}
+			<div class="mt-2 space-y-3 p-3 bg-surface-charcoal border border-[#FFFFFF10] rounded-xl">
+				<div>
+					<label class="text-label-xs text-on-surface-variant block mb-1">
+						Card Proximity: {cardProximityPct}% of width
+					</label>
+					<input
+						type="range"
+						min="0.1"
+						max="10"
+						step="0.1"
+						bind:value={cardProximityPct}
+						class="w-full accent-primary"
+					/>
+				</div>
+				<div>
+					<label class="text-label-xs text-on-surface-variant block mb-1">
+						Watermark Proximity: {wmProximityPct}% of width
+					</label>
+					<input
+						type="range"
+						min="0.1"
+						max="10"
+						step="0.1"
+						bind:value={wmProximityPct}
+						class="w-full accent-primary"
+					/>
+				</div>
+				<div>
+					<label class="text-label-xs text-on-surface-variant block mb-1">
+						Min Watermark Area: {minAreaRatioPct}% of image
+					</label>
+					<input
+						type="range"
+						min="0.01"
+						max="5"
+						step="0.01"
+						bind:value={minAreaRatioPct}
+						class="w-full accent-primary"
+					/>
+				</div>
+			</div>
+		{/if}
 	</div>
 
 	{#if debugMode && debugInfo}
@@ -534,6 +605,11 @@
 							<div class="text-on-surface">
 								Method: <span class="text-primary">{debugInfo.visual.detectionMethod}</span>
 							</div>
+							{#if debugInfo.visual.renderSource}
+								<div class="text-on-surface-variant">
+									Source: {debugInfo.visual.renderSource}
+								</div>
+							{/if}
 							<div class="text-on-surface-variant">
 								Render scale: {debugInfo.visual.renderScale}x
 							</div>
@@ -558,9 +634,105 @@
 						{/if}
 					</div>
 				</div>
+
+				{#if debugInfo.visual?.algorithmLogs && debugInfo.visual.algorithmLogs.length > 0}
+					<div class="mt-3">
+						<span class="text-label-lg font-semibold text-on-surface block mb-2">Algorithm Stages</span>
+						<div class="space-y-1.5">
+						{#each debugInfo.visual.algorithmLogs as log (log.stage + log.timestamp)}
+							{@const comps = log.details.componentBreakdown as any[]}
+							<div class="p-2 bg-surface-container rounded">
+								<div class="flex justify-between items-start gap-2">
+									<span class="text-label-sm font-semibold text-primary">{log.stage}</span>
+									<span class="text-label-xs text-on-surface-variant/60 whitespace-nowrap">+{log.timestamp}ms</span>
+								</div>
+								{#if Object.keys(log.details).length > 0}
+									<div class="mt-1 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-label-xs">
+									{#each Object.entries(log.details).filter(([k]) => k !== 'componentBreakdown') as [key, value]}
+										<span class="text-on-surface-variant/70">{key}</span>
+										<span class="text-on-surface">
+											{#if typeof value === 'object' && value !== null}
+												{JSON.stringify(value)}
+											{:else}
+												{value}
+											{/if}
+										</span>
+									{/each}
+									</div>
+								{/if}
+								{#if comps && comps.length > 0}
+									{@const stageKey = log.stage + log.timestamp}
+									{@const isExpanded = expandedComponentStages[stageKey] === true}
+									<div class="mt-2">
+										<button
+											class="flex items-center gap-1.5 text-label-xs text-primary hover:underline cursor-pointer bg-transparent border-none p-0"
+											onclick={() => toggleComponentStage(stageKey)}
+										>
+											<span class="inline-block transition-transform" class:rotate-90={isExpanded}>&#9654;</span>
+											{comps.length} component{comps.length !== 1 ? 's' : ''}
+											<span class="text-on-surface-variant/60">(click to expand)</span>
+										</button>
+										{#if isExpanded}
+											<div class="mt-2 space-y-2">
+											{#each comps as comp (comp.index)}
+												<div class="p-2 bg-surface-charcoal rounded border border-[#FFFFFF10]">
+													<div class="flex items-start gap-3">
+														{#if comp.imageDataUrl}
+															<div class="shrink-0">
+																<img src={comp.imageDataUrl} alt="Component {comp.index}" class="max-w-[200px] max-h-[200px] rounded" />
+															</div>
+														{/if}
+														<div class="min-w-0 flex-1 text-label-xs space-y-0.5">
+															<div class="flex items-center gap-2">
+																<span class="font-semibold text-on-surface">#{comp.index}</span>
+																{#if comp.isCardBlock}
+																	<span class="px-1.5 py-0.5 rounded text-[10px] bg-blue-500/20 text-blue-300">Card Block</span>
+																{/if}
+																{#if comp.isWatermarkCandidate}
+																	<span class="px-1.5 py-0.5 rounded text-[10px] bg-red-500/20 text-red-300">Watermark</span>
+																{/if}
+															</div>
+															<div class="text-on-surface-variant/70">Bounds: ({comp.bounds?.x}, {comp.bounds?.y}) {comp.bounds?.width}x{comp.bounds?.height}</div>
+															<div class="text-on-surface-variant/70">Pixels: {comp.pixelCount?.toLocaleString()} | Area: {comp.area?.toLocaleString()}</div>
+														</div>
+													</div>
+												</div>
+											{/each}
+											</div>
+										{/if}
+									</div>
+								{/if}
+							</div>
+						{/each}
+						</div>
+					</div>
+				{/if}
+
+				{#if debugInfo.visual?.originalImageDataUrl}
+					<div class="mt-3">
+						<span class="text-label-lg font-semibold text-on-surface block mb-2">Stage Images</span>
+						<div class="space-y-3">
+							<div>
+								<span class="text-label-sm text-on-surface-variant">Original extracted image:</span>
+								<div class="mt-1 bg-surface-container rounded-lg overflow-hidden p-1 inline-block">
+									<img src={debugInfo.visual.originalImageDataUrl} alt="Original extracted image" class="max-w-[400px] max-h-[400px]" />
+								</div>
+							</div>
+							{#if debugInfo.visual.watermarkHighlightDataUrl}
+								<div>
+									<span class="text-label-sm text-on-surface-variant">Watermark region highlighted (red box):</span>
+									<div class="mt-1 bg-surface-container rounded-lg overflow-hidden p-1 inline-block">
+										<img src={debugInfo.visual.watermarkHighlightDataUrl} alt="Watermark region highlighted" class="max-w-[400px] max-h-[400px]" />
+									</div>
+								</div>
+							{/if}
+						</div>
+					</div>
+				{/if}
+
 				{#if modifiedImageBytes}
-					<div class="mt-2">
-						<span class="text-on-surface-variant">Modified image:</span>
+					<div class="mt-3">
+						<span class="text-label-sm text-on-surface-variant">Modified image (after watermark removal):</span>
 						<div class="mt-1 bg-surface-container rounded-lg overflow-hidden p-1 inline-block">
 							<canvas bind:this={debugImageCanvasEl}></canvas>
 						</div>

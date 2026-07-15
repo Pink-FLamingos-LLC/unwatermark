@@ -1,9 +1,14 @@
 import { PDFDocument } from "pdf-lib";
-import { detectWatermarkRegion, findBackgroundColor } from "./visual-detector";
-import type { BoundingBox, PdfDebugInfo } from "./types";
+import { detectWatermarkRegion, findBackgroundColor, type DetectionDebug } from "./visual-detector";
+import type {
+  BoundingBox,
+  PdfDebugInfo,
+  AlgorithmStageLog,
+  WatermarkDetectionConfig,
+} from "./types";
 
 interface PDFPageNode {
-  normalize?(): void;
+  normalize(): void;
   get?(key: unknown): unknown;
   Resources():
     | {
@@ -16,64 +21,6 @@ interface PDFPageNode {
   Contents(): unknown;
   set(key: unknown, value: unknown): void;
   MediaBox(): { get(index: number): number };
-}
-
-interface PDFStreamLike {
-  getUnencodedContents?(): Uint8Array;
-  getContents?(): Uint8Array;
-}
-
-function resolveStream(pdfDoc: PDFDocument, obj: unknown): PDFStreamLike | null {
-  if (!obj || typeof obj !== "object") return null;
-  if ("getUnencodedContents" in obj || "getContents" in obj) return obj as PDFStreamLike;
-  try {
-    const ctx = pdfDoc.context as any;
-    const resolved = ctx.lookup?.(obj) ?? ctx.lookupMaybe?.(obj);
-    if (
-      resolved &&
-      typeof resolved === "object" &&
-      ("getUnencodedContents" in resolved || "getContents" in resolved)
-    ) {
-      return resolved as PDFStreamLike;
-    }
-  } catch {
-    /* */
-  }
-  return null;
-}
-
-function readStreamBytes(stream: PDFStreamLike): Uint8Array | null {
-  try {
-    const bytes = stream.getUnencodedContents?.();
-    if (bytes && bytes.length > 0) return bytes;
-  } catch {
-    /* */
-  }
-  try {
-    const bytes = stream.getContents?.();
-    if (bytes && bytes.length > 0) return bytes;
-  } catch {
-    /* */
-  }
-  return null;
-}
-
-function decodePdfName(raw: unknown): string {
-  const rawName = raw as string | { decodeText?(): string };
-  const name = typeof rawName === "string" ? rawName : (rawName.decodeText?.() ?? String(rawName));
-  return name.startsWith("/") ? name.substring(1) : name;
-}
-
-async function decodeImageToCanvas(imageBytes: Uint8Array): Promise<HTMLCanvasElement> {
-  const blob = new Blob([imageBytes.slice().buffer as ArrayBuffer]);
-  const bitmap = await createImageBitmap(blob);
-  const canvas = document.createElement("canvas");
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
-  const ctx = canvas.getContext("2d")!;
-  ctx.drawImage(bitmap, 0, 0);
-  bitmap.close();
-  return canvas;
 }
 
 async function encodeCanvas(
@@ -129,6 +76,55 @@ function hasCanvasContent(canvas: HTMLCanvasElement): boolean {
   return sampled > 0 && nonWhite / sampled > 0.01;
 }
 
+function canvasToDebugDataUrl(canvas: HTMLCanvasElement): string {
+  const maxDim = 600;
+  let w = canvas.width;
+  let h = canvas.height;
+  if (w > maxDim || h > maxDim) {
+    const ratio = Math.min(maxDim / w, maxDim / h);
+    w = Math.round(w * ratio);
+    h = Math.round(h * ratio);
+  }
+  const scaled = document.createElement("canvas");
+  scaled.width = w;
+  scaled.height = h;
+  const ctx = scaled.getContext("2d")!;
+  ctx.drawImage(canvas, 0, 0, w, h);
+  return scaled.toDataURL("image/jpeg", 0.7);
+}
+
+function highlightWatermarkRegion(sourceCanvas: HTMLCanvasElement, box: BoundingBox): string {
+  const canvas = document.createElement("canvas");
+  canvas.width = sourceCanvas.width;
+  canvas.height = sourceCanvas.height;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(sourceCanvas, 0, 0);
+  ctx.strokeStyle = "#FF0000";
+  ctx.lineWidth = Math.max(3, Math.ceil(Math.max(canvas.width, canvas.height) / 500));
+  ctx.strokeRect(box.x, box.y, box.width, box.height);
+  return canvasToDebugDataUrl(canvas);
+}
+
+function cropComponentToDataUrl(sourceCanvas: HTMLCanvasElement, box: BoundingBox): string {
+  const pad = Math.max(2, Math.ceil(Math.min(box.width, box.height) * 0.05));
+  const x = Math.max(0, box.x - pad);
+  const y = Math.max(0, box.y - pad);
+  const w = Math.min(box.width + pad * 2, sourceCanvas.width - x);
+  const h = Math.min(box.height + pad * 2, sourceCanvas.height - y);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(sourceCanvas, x, y, w, h, 0, 0, w, h);
+
+  ctx.strokeStyle = "#FF5500";
+  ctx.lineWidth = Math.max(1, Math.ceil(Math.max(w, h) / 150));
+  ctx.strokeRect(pad, pad, box.width, box.height);
+
+  return canvasToDebugDataUrl(canvas);
+}
+
 async function tryRenderWithPdfjs(pdfBuffer: ArrayBuffer): Promise<HTMLCanvasElement | null> {
   try {
     const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -154,62 +150,12 @@ async function tryRenderWithPdfjs(pdfBuffer: ArrayBuffer): Promise<HTMLCanvasEle
       return canvas;
     }
 
-    console.log("[visual] pdfjs render produced blank canvas, falling back to pdf-lib");
+    console.log("[visual] pdfjs render produced blank canvas");
     return null;
   } catch (err) {
-    console.log("[visual] pdfjs render failed:", err, "- falling back to pdf-lib");
+    console.log("[visual] pdfjs render failed:", err, "(pdf-lib mode disabled)");
     return null;
   }
-}
-
-async function extractAndDecodeFromPdfLib(
-  pdfDoc: PDFDocument,
-): Promise<{ canvas: HTMLCanvasElement; xobjectName: string } | null> {
-  const pages = pdfDoc.getPages();
-  if (pages.length === 0) return null;
-
-  const page = pages[0];
-  const pageNode = page.node as unknown as PDFPageNode;
-  const resources = pageNode.Resources();
-  if (!resources) return null;
-
-  let xobjectDict: { entries?(): Iterable<[unknown, unknown]> } | undefined;
-  if (resources.entries) {
-    for (const [key, value] of resources.entries()) {
-      if (decodePdfName(key) === "XObject") {
-        xobjectDict = value as { entries?(): Iterable<[unknown, unknown]> };
-        break;
-      }
-    }
-  }
-  if (!xobjectDict?.entries) return null;
-
-  for (const [key, value] of xobjectDict.entries()) {
-    const name = decodePdfName(key);
-    const stream = resolveStream(pdfDoc, value);
-    if (!stream) continue;
-    const bytes = readStreamBytes(stream);
-    if (!bytes || bytes.length < 100) continue;
-
-    try {
-      const canvas = await decodeImageToCanvas(bytes);
-      console.log(
-        "[visual] pdf-lib extracted XObject",
-        name,
-        "size:",
-        bytes.length,
-        "-> canvas:",
-        canvas.width,
-        "x",
-        canvas.height,
-      );
-      return { canvas, xobjectName: name };
-    } catch {
-      continue;
-    }
-  }
-
-  return null;
 }
 
 export interface VisualResult {
@@ -222,7 +168,19 @@ export async function processPdfVisual(
   manualSelection: BoundingBox | null,
   onProgress: (stage: string, percent: number) => void,
   onDebug: (info: PdfDebugInfo) => void,
+  detectionConfig?: WatermarkDetectionConfig,
 ): Promise<VisualResult> {
+  const t0 = performance.now();
+  const algorithmLogs: AlgorithmStageLog[] = [];
+
+  function logStage(stage: string, details: Record<string, unknown> = {}) {
+    algorithmLogs.push({
+      stage,
+      timestamp: (performance.now() - t0).toFixed(1) as unknown as number,
+      details,
+    });
+  }
+
   onProgress("Loading PDF...", 0);
 
   const pdfDoc = await PDFDocument.load(pdfBuffer, { parseSpeed: 0 });
@@ -235,33 +193,60 @@ export async function processPdfVisual(
   const page = pages[0];
   const pageNode = page.node as unknown as PDFPageNode;
   const mediaBox = pageNode.MediaBox();
-  const pageWidth = Number(mediaBox.get(2));
-  const pageHeight = Number(mediaBox.get(3));
+  const llx = Number(mediaBox.get(0));
+  const lly = Number(mediaBox.get(1));
+  const urx = Number(mediaBox.get(2));
+  const ury = Number(mediaBox.get(3));
+  const pageWidth = urx - llx;
+  const pageHeight = ury - lly;
+  console.log(
+    "[visual] PDF page dims: mediaBox=[",
+    llx,
+    lly,
+    urx,
+    ury,
+    "] pageWidth=",
+    pageWidth,
+    "pageHeight=",
+    pageHeight,
+  );
+
+  logStage("pdf-loaded", {
+    pageCount: pages.length,
+    pageWidth,
+    pageHeight,
+  });
 
   onProgress("Rendering page...", 10);
 
   let canvas: HTMLCanvasElement;
-  let renderSource: string;
+  const renderSource = "pdfjs";
 
-  const pdfLibResult = await extractAndDecodeFromPdfLib(pdfDoc);
-  if (pdfLibResult) {
-    canvas = pdfLibResult.canvas;
-    renderSource = `pdf-lib (${pdfLibResult.xobjectName})`;
-    console.log("[visual] using pdf-lib extracted image:", pdfLibResult.xobjectName);
+  const pdfjsCanvas = await tryRenderWithPdfjs(pdfBuffer);
+  if (pdfjsCanvas) {
+    canvas = pdfjsCanvas;
+    logStage("image-extraction", {
+      source: "pdfjs (full page render)",
+      canvasWidth: pdfjsCanvas.width,
+      canvasHeight: pdfjsCanvas.height,
+    });
+    console.log("[visual] using pdfjs render");
   } else {
-    const pdfjsCanvas = await tryRenderWithPdfjs(pdfBuffer);
-    if (pdfjsCanvas) {
-      canvas = pdfjsCanvas;
-      renderSource = "pdfjs";
-      console.log("[visual] using pdfjs render (no extractable images found)");
-    } else {
-      throw new Error(
-        "Could not render page: no image XObjects found and pdfjs produced blank canvas",
-      );
-    }
+    logStage("image-extraction-failed", {
+      reason: "pdfjs produced blank canvas",
+    });
+    console.log("[visual] pdfjs render failed, pdf-lib mode disabled");
+    throw new Error("Could not render page: pdfjs produced blank canvas (pdf-lib mode disabled)");
   }
 
   const ctx = canvas.getContext("2d")!;
+  const originalImageDataUrl = canvasToDebugDataUrl(canvas);
+
+  logStage("render-source", {
+    source: renderSource,
+    canvasWidth: canvas.width,
+    canvasHeight: canvas.height,
+  });
 
   console.log("[visual] render source:", renderSource, "canvas:", canvas.width, "x", canvas.height);
 
@@ -273,24 +258,79 @@ export async function processPdfVisual(
     const scaleX = canvas.width / pageWidth;
     const scaleY = canvas.height / pageHeight;
 
+    console.log("[visual] MANUAL SELECTION pageWidth=", pageWidth, "pageHeight=", pageHeight);
+    console.log("[visual] MANUAL SELECTION canvas=", canvas.width, "x", canvas.height);
+    console.log("[visual] MANUAL SELECTION scale=", scaleX, scaleY);
+    console.log("[visual] MANUAL SELECTION pdfBox=", JSON.stringify(manualSelection));
+
     watermarkBox = {
       x: Math.round(manualSelection.x * scaleX),
-      y: Math.round((pageHeight - manualSelection.y - manualSelection.height) * scaleY),
+      y: Math.round(manualSelection.y * scaleY),
       width: Math.round(manualSelection.width * scaleX),
       height: Math.round(manualSelection.height * scaleY),
     };
+
+    console.log("[visual] MANUAL SELECTION canvasBox BEFORE clamp=", JSON.stringify(watermarkBox));
 
     watermarkBox.x = Math.max(0, Math.min(watermarkBox.x, canvas.width - 1));
     watermarkBox.y = Math.max(0, Math.min(watermarkBox.y, canvas.height - 1));
     watermarkBox.width = Math.min(watermarkBox.width, canvas.width - watermarkBox.x);
     watermarkBox.height = Math.min(watermarkBox.height, canvas.height - watermarkBox.y);
+
+    console.log("[visual] MANUAL SELECTION canvasBox AFTER clamp=", JSON.stringify(watermarkBox));
+
+    logStage("manual-selection", {
+      pdfSelection: manualSelection,
+      canvasSelection: watermarkBox,
+    });
   } else {
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    watermarkBox = detectWatermarkRegion(imageData.data, canvas.width, canvas.height);
+    const detectionDebug: DetectionDebug = {} as DetectionDebug;
+
+    logStage("background-detection-start", {
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+    });
+
+    watermarkBox = detectWatermarkRegion(
+      imageData.data,
+      canvas.width,
+      canvas.height,
+      detectionConfig,
+      detectionDebug,
+    );
+
+    const componentBreakdown = (detectionDebug.components || []).map((c) => ({
+      ...c,
+      imageDataUrl: cropComponentToDataUrl(canvas, c.bounds),
+    }));
+
+    logStage("component-detection", {
+      componentsFound: detectionDebug.componentsFound || 0,
+      clustersFound: detectionDebug.clustersFound || 0,
+      cardBlockPixels: detectionDebug.cardBlockPixels || 0,
+      cardBlockComponents: detectionDebug.cardBlockComponents || 0,
+      watermarkCandidates: detectionDebug.watermarkCandidates || 0,
+      selectedWatermarkPixels: detectionDebug.selectedWatermarkPixels || 0,
+      totalPixels: detectionDebug.totalPixels || 0,
+      proximityThreshold: detectionDebug.proximityThreshold || 0,
+      samplingStep: detectionDebug.samplingStep || 0,
+      componentBreakdown,
+    });
   }
 
   const pixelData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
   const bgColor = findBackgroundColor(pixelData, canvas.width, canvas.height);
+
+  logStage("background-color-detected", {
+    r: bgColor.r,
+    g: bgColor.g,
+    b: bgColor.b,
+  });
+
+  const watermarkHighlightDataUrl = watermarkBox
+    ? highlightWatermarkRegion(canvas, watermarkBox)
+    : undefined;
 
   if (!watermarkBox) {
     let nonWhiteCount = 0;
@@ -304,6 +344,12 @@ export async function processPdfVisual(
       if (lum > maxLum) maxLum = lum;
     }
     const totalSampled = Math.floor(pixelData.length / (4 * sampleStep));
+
+    const diagnostic = `source: ${renderSource}, non-white: ${nonWhiteCount}/${totalSampled}, lum: ${minLum.toFixed(0)}-${maxLum.toFixed(0)}`;
+    logStage("detection-failed", {
+      diagnostic,
+      totalTime: `${(performance.now() - t0).toFixed(0)}ms`,
+    });
 
     onDebug({
       pageCount: pages.length,
@@ -324,13 +370,24 @@ export async function processPdfVisual(
         bgColor,
         imageFormat: "none",
         imageSizeBytes: 0,
-        diagnostic: `source: ${renderSource}, non-white: ${nonWhiteCount}/${totalSampled}, lum: ${minLum.toFixed(0)}-${maxLum.toFixed(0)}`,
+        diagnostic,
+        renderSource,
+        algorithmLogs,
+        originalImageDataUrl,
       },
     });
     throw new Error(
       "No watermark detected visually. Try manual selection or structural detection.",
     );
   }
+
+  logStage("watermark-identified", {
+    x: watermarkBox.x,
+    y: watermarkBox.y,
+    width: watermarkBox.width,
+    height: watermarkBox.height,
+    method: manualSelection ? "manual" : "automatic",
+  });
 
   onProgress("Removing watermark from image...", 60);
 
@@ -353,14 +410,46 @@ export async function processPdfVisual(
       bgColor,
       imageFormat: "pending",
       imageSizeBytes: 0,
+      renderSource,
+      algorithmLogs,
+      originalImageDataUrl,
+      watermarkHighlightDataUrl,
     },
   });
 
+  const paintStart = performance.now();
+  console.log("[visual] paintOverRegion: box=", JSON.stringify(watermarkBox), "bgColor=", JSON.stringify(bgColor), "canvas=", canvas.width, "x", canvas.height);
   await paintOverRegion(canvas, watermarkBox, bgColor);
+  const paintCheck = canvas.getContext("2d")!.getImageData(watermarkBox.x, watermarkBox.y, Math.min(watermarkBox.width, 5), Math.min(watermarkBox.height, 5));
+  console.log("[visual] after paint, first few pixels r=", paintCheck.data[0], paintCheck.data[1], paintCheck.data[2]);
+  logStage("paint-over-complete", {
+    region: {
+      x: watermarkBox.x,
+      y: watermarkBox.y,
+      width: watermarkBox.width,
+      height: watermarkBox.height,
+    },
+    bgColor,
+    timeMs: `${(performance.now() - paintStart).toFixed(0)}ms`,
+  });
 
   onProgress("Encoding modified image...", 70);
 
+  const encodeStart = performance.now();
   const encoded = await encodeCanvas(canvas);
+  logStage("encode-complete", {
+    format: encoded.format,
+    sizeBytes: encoded.bytes.length,
+    timeMs: `${(performance.now() - encodeStart).toFixed(0)}ms`,
+  });
+
+  logStage("summary", {
+    totalTime: `${(performance.now() - t0).toFixed(0)}ms`,
+    detectionMethod: manualSelection ? "manual" : "automatic",
+    renderSource,
+    finalImageFormat: encoded.format,
+    finalImageSize: encoded.bytes.length,
+  });
 
   onDebug({
     pageCount: pages.length,
@@ -381,70 +470,45 @@ export async function processPdfVisual(
       bgColor,
       imageFormat: encoded.format,
       imageSizeBytes: encoded.bytes.length,
+      renderSource,
+      algorithmLogs,
+      originalImageDataUrl,
+      watermarkHighlightDataUrl,
     },
   });
 
   onProgress("Replacing image in PDF...", 80);
 
-  if (renderSource === "pdfjs") {
-    const newImage = pdfDoc.context.stream(encoded.bytes, {
-      Type: "XObject",
-      Subtype: "Image",
-      Width: canvas.width,
-      Height: canvas.height,
-      BitsPerComponent: 8,
-      Filter: encoded.format === "jpeg" ? "DCTDecode" : "FlateDecode",
-    });
-    const imageRef = pdfDoc.context.register(newImage);
+  const newImage = pdfDoc.context.stream(encoded.bytes, {
+    Type: "XObject",
+    Subtype: "Image",
+    Width: canvas.width,
+    Height: canvas.height,
+    BitsPerComponent: 8,
+    ColorSpace: "DeviceRGB",
+    Filter: encoded.format === "jpeg" ? "DCTDecode" : "FlateDecode",
+  });
+  const imageRef = pdfDoc.context.register(newImage);
 
-    const contentStr = `q ${pageWidth} 0 0 ${pageHeight} 0 0 cm /img Do Q`;
-    const contentBytes = new TextEncoder().encode(contentStr);
-    const contentStream = pdfDoc.context.stream(contentBytes);
-    const contentRef = pdfDoc.context.register(contentStream);
+  const contentStr = `q ${pageWidth} 0 0 ${pageHeight} 0 0 cm /img Do Q`;
+  const contentBytes = new TextEncoder().encode(contentStr);
+  const contentStream = pdfDoc.context.stream(contentBytes);
+  const contentRef = pdfDoc.context.register(contentStream);
 
-    pageNode.set(pdfDoc.context.obj("Contents"), pdfDoc.context.obj([contentRef]));
+  pageNode.normalize();
 
-    const resources = pageNode.Resources();
-    if (resources?.entries) {
-      for (const [key, value] of resources.entries()) {
-        if (decodePdfName(key) === "XObject") {
-          const xobjectDict = value as any;
-          const existing = xobjectDict.entries ? [...xobjectDict.entries()] : [];
-          for (const [k] of existing) {
-            xobjectDict.delete?.(k);
-          }
-          xobjectDict.set(pdfDoc.context.obj("/img"), imageRef);
-          break;
-        }
-      }
-    }
-  } else {
-    const resources = pageNode.Resources();
-    if (resources?.entries) {
-      for (const [key, value] of resources.entries()) {
-        if (decodePdfName(key) === "XObject") {
-          const xobjectDict = value as any;
-          for (const [xoKey, xoValue] of xobjectDict.entries()) {
-            const stream = resolveStream(pdfDoc, xoValue);
-            if (stream && readStreamBytes(stream)) {
-              const newStream = pdfDoc.context.stream(encoded.bytes, {
-                Type: "XObject",
-                Subtype: "Image",
-                Width: canvas.width,
-                Height: canvas.height,
-                BitsPerComponent: 8,
-                Filter: encoded.format === "jpeg" ? "DCTDecode" : "FlateDecode",
-              });
-              const streamRef = pdfDoc.context.register(newStream);
-              xobjectDict.set(xoKey, streamRef);
-              break;
-            }
-          }
-          break;
-        }
-      }
+  // Clear old XObject entries to avoid decoder warnings on orphaned images
+  const leaf = pageNode as any;
+  const xobjectDict = leaf.normalizedEntries().XObject;
+  if (xobjectDict) {
+    const keys = xobjectDict.keys();
+    for (const key of keys) {
+      xobjectDict.delete(key);
     }
   }
+  xobjectDict.set(pdfDoc.context.obj("img"), imageRef);
+
+  pageNode.set(pdfDoc.context.obj("Contents"), pdfDoc.context.obj([contentRef]));
 
   onProgress("Saving PDF...", 90);
   const processedPdf = await pdfDoc.save();

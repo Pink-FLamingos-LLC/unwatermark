@@ -50,8 +50,6 @@
 
 		if (gen !== renderGeneration) return;
 
-		onpagedimensions?.(bitmap.width, bitmap.height);
-
 		const dpr = window.devicePixelRatio || 1;
 		const containerW = containerEl?.clientWidth ?? 800;
 		const scale = containerW / bitmap.width;
@@ -64,7 +62,7 @@
 		canvas.style.width = `${canvasCssWidth}px`;
 		canvas.style.height = `${canvasCssHeight}px`;
 
-		const ctx = canvas.getContext('2d')!;
+		const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
 		ctx.scale(dpr, dpr);
 		ctx.drawImage(bitmap, 0, 0, canvasCssWidth, canvasCssHeight);
 		bitmap.close();
@@ -110,10 +108,10 @@
 		canvas.style.width = `${scaledVp.width}px`;
 		canvas.style.height = `${scaledVp.height}px`;
 
-		const ctx = canvas.getContext('2d')!;
+		const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
 		ctx.scale(dpr, dpr);
 
-		await page.render({ canvas: null, canvasContext: ctx, viewport: scaledVp }).promise;
+		await page.render({ canvas, canvasContext: ctx, viewport: scaledVp }).promise;
 		if (gen !== renderGeneration) return;
 
 		const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
@@ -175,6 +173,10 @@
 		};
 	}
 
+	function logSelection(label: string, sel: BoundingBox) {
+		console.log(`[highlight] ${label}`, JSON.stringify(sel), `cssSize=${canvasCssWidth}x${canvasCssHeight} page=${pageWidth}x${pageHeight}`);
+	}
+
 	function toCanvas(e: MouseEvent): { x: number; y: number } | null {
 		const canvas = overlayCanvasEl;
 		if (!canvas) return null;
@@ -190,7 +192,7 @@
 		const pdfCanvas = pdfCanvasEl;
 		if (!pdfCanvas) return;
 		const dpr = window.devicePixelRatio || 1;
-		const ctx = pdfCanvas.getContext('2d')!;
+		const ctx = pdfCanvas.getContext('2d', { willReadFrequently: true })!;
 		const px = Math.floor(pos.x * dpr);
 		const py = Math.floor(pos.y * dpr);
 		const pixel = ctx.getImageData(px, py, 1, 1).data;
@@ -202,13 +204,14 @@
 			const allPixels = ctx.getImageData(0, 0, w, h).data;
 			const bounds = floodFillBoundary(allPixels, w, h, px, py, FLOOD_FILL_TOLERANCE);
 			if (bounds) {
-				selection = {
-					x: (bounds.x / dpr / canvasCssWidth) * pageWidth,
-					y: (bounds.y / dpr / canvasCssHeight) * pageHeight,
-					width: (bounds.width / dpr / canvasCssWidth) * pageWidth,
-					height: (bounds.height / dpr / canvasCssHeight) * pageHeight,
-				};
-				onselect?.(selection);
+			selection = {
+				x: (bounds.x / dpr / canvasCssWidth) * pageWidth,
+				y: (bounds.y / dpr / canvasCssHeight) * pageHeight,
+				width: (bounds.width / dpr / canvasCssWidth) * pageWidth,
+				height: (bounds.height / dpr / canvasCssHeight) * pageHeight,
+			};
+			logSelection("flood-fill selection", selection);
+			onselect?.(selection);
 				drawOverlay();
 			}
 			return;
@@ -255,6 +258,7 @@
 			width: (w / canvasCssWidth) * pageWidth,
 			height: (h / canvasCssHeight) * pageHeight,
 		};
+		logSelection("drag selection", selection);
 		onselect?.(selection);
 		drawOverlay();
 		dragStart = null;

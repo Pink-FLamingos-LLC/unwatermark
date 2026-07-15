@@ -1,10 +1,38 @@
-import type { BoundingBox } from "./types";
+import type { BoundingBox, WatermarkDetectionConfig } from "./types";
 import { getLuminance } from "./flood-fill";
 
 const WHITE_THRESHOLD = 245;
 const COLOR_TOLERANCE = 40;
 const SIZE_SIMILARITY_THRESHOLD = 0.01;
-const MIN_WATERMARK_AREA_RATIO = 0.01;
+
+const DEFAULT_CARD_PROXIMITY_FACTOR = 0.04;
+const DEFAULT_WM_PROXIMITY_FACTOR = 0.04;
+const DEFAULT_MIN_WATERMARK_AREA_RATIO = 0.001;
+
+export interface ComponentDebug {
+  index: number;
+  bounds: BoundingBox;
+  pixelCount: number;
+  area: number;
+  isCardBlock: boolean;
+  isWatermarkCandidate: boolean;
+}
+
+export interface DetectionDebug {
+  componentsFound: number;
+  clustersFound: number;
+  cardBlockPixels: number;
+  cardBlockComponents: number;
+  watermarkCandidates: number;
+  selectedWatermarkPixels: number;
+  totalPixels: number;
+  proximityThreshold: number;
+  samplingStep: number;
+  cardProximityFactor?: number;
+  wmProximityFactor?: number;
+  minWatermarkAreaRatio?: number;
+  components?: ComponentDebug[];
+}
 
 function colorMatch(
   data: Uint8ClampedArray,
@@ -129,7 +157,7 @@ export function findBackgroundColor(
   return { r: Math.round(avgR), g: Math.round(avgG), b: Math.round(avgB) };
 }
 
-interface Component {
+export interface Component {
   bounds: BoundingBox;
   pixelCount: number;
 }
@@ -232,7 +260,11 @@ function areasSimilar(a: Component, b: Component): boolean {
   return Math.abs(areaA - areaB) / maxArea <= SIZE_SIMILARITY_THRESHOLD;
 }
 
-function clusterComponents(components: Component[], imgWidth: number): ComponentCluster[] {
+function clusterComponents(
+  components: Component[],
+  imgWidth: number,
+  proximityFactor: number = DEFAULT_CARD_PROXIMITY_FACTOR,
+): ComponentCluster[] {
   const n = components.length;
   const parent = Array.from({ length: n }, (_, i) => i);
 
@@ -250,7 +282,7 @@ function clusterComponents(components: Component[], imgWidth: number): Component
     if (ri !== rj) parent[ri] = rj;
   }
 
-  const proximityThreshold = imgWidth * 0.02;
+  const proximityThreshold = imgWidth * proximityFactor;
 
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
@@ -278,27 +310,224 @@ export function detectWatermarkRegion(
   data: Uint8ClampedArray,
   imgWidth: number,
   imgHeight: number,
+  config?: WatermarkDetectionConfig,
+  debug?: DetectionDebug,
 ): BoundingBox | null {
   const totalPixels = imgWidth * imgHeight;
+  const samplingStep = 2;
   const bg = findBackgroundColor(data, imgWidth, imgHeight);
-  const components = findComponents(data, imgWidth, imgHeight, bg, 2);
+  const components = findComponents(data, imgWidth, imgHeight, bg, samplingStep);
 
-  if (components.length === 0) return null;
+  const cardProximityFactor = config?.cardProximityFactor ?? DEFAULT_CARD_PROXIMITY_FACTOR;
+  const wmProximityFactor = config?.wmProximityFactor ?? DEFAULT_WM_PROXIMITY_FACTOR;
+  const minWatermarkAreaRatio = config?.minWatermarkAreaRatio ?? DEFAULT_MIN_WATERMARK_AREA_RATIO;
 
-  const clusters = clusterComponents(components, imgWidth);
+  if (components.length === 0) {
+    if (debug) {
+      debug.componentsFound = 0;
+      debug.clustersFound = 0;
+      debug.cardBlockPixels = 0;
+      debug.cardBlockComponents = 0;
+      debug.watermarkCandidates = 0;
+      debug.selectedWatermarkPixels = 0;
+      debug.totalPixels = totalPixels;
+      debug.proximityThreshold = imgWidth * cardProximityFactor;
+      debug.samplingStep = samplingStep;
+      debug.cardProximityFactor = cardProximityFactor;
+      debug.wmProximityFactor = wmProximityFactor;
+      debug.minWatermarkAreaRatio = minWatermarkAreaRatio;
+    }
+    return null;
+  }
 
-  if (clusters.length === 0) return null;
+  const clusters = clusterComponents(components, imgWidth, cardProximityFactor);
+
+  if (clusters.length === 0) {
+    if (debug) {
+      debug.componentsFound = components.length;
+      debug.clustersFound = 0;
+      debug.cardBlockPixels = 0;
+      debug.cardBlockComponents = 0;
+      debug.watermarkCandidates = 0;
+      debug.selectedWatermarkPixels = 0;
+      debug.totalPixels = totalPixels;
+      debug.proximityThreshold = imgWidth * cardProximityFactor;
+      debug.samplingStep = samplingStep;
+      debug.cardProximityFactor = cardProximityFactor;
+      debug.wmProximityFactor = wmProximityFactor;
+      debug.minWatermarkAreaRatio = minWatermarkAreaRatio;
+    }
+    return null;
+  }
 
   clusters.sort((a, b) => b.combinedPixelCount - a.combinedPixelCount);
   const cardBlockCluster = clusters[0];
 
   const cardComponentSet = new Set(cardBlockCluster.components);
-  const watermarkComponents = components.filter(
-    (c) => !cardComponentSet.has(c) && c.pixelCount >= totalPixels * MIN_WATERMARK_AREA_RATIO,
+
+  // 1. Calculate the massive bounding box that wraps the entire Card Block
+  let cbMinX = Infinity,
+    cbMinY = Infinity,
+    cbMaxX = -Infinity,
+    cbMaxY = -Infinity;
+  for (const comp of cardBlockCluster.components) {
+    if (comp.bounds.x < cbMinX) cbMinX = comp.bounds.x;
+    if (comp.bounds.y < cbMinY) cbMinY = comp.bounds.y;
+    if (comp.bounds.x + comp.bounds.width > cbMaxX) cbMaxX = comp.bounds.x + comp.bounds.width;
+    if (comp.bounds.y + comp.bounds.height > cbMaxY) cbMaxY = comp.bounds.y + comp.bounds.height;
+  }
+  const cardBlockBounds: BoundingBox = {
+    x: cbMinX,
+    y: cbMinY,
+    width: cbMaxX - cbMinX,
+    height: cbMaxY - cbMinY,
+  };
+
+  // Helper function to check if two boxes overlap
+  function isOverlapping(a: BoundingBox, b: BoundingBox): boolean {
+    return !(
+      a.x + a.width <= b.x ||
+      b.x + b.width <= a.x ||
+      a.y + a.height <= b.y ||
+      b.y + b.height <= a.y
+    );
+  }
+
+  // 2. Filter out the card block AND anything that sits inside its boundaries
+  const remainingComponents = components.filter(
+    (c) => !cardComponentSet.has(c) && !isOverlapping(c.bounds, cardBlockBounds),
   );
 
-  if (watermarkComponents.length === 0) return null;
+  // 3. Group these remaining components purely by proximity (ignoring area)
+  const nRem = remainingComponents.length;
 
-  watermarkComponents.sort((a, b) => b.pixelCount - a.pixelCount);
-  return watermarkComponents[0].bounds;
+  console.log(
+    `[watermark] Remaining components after card block filter: ${remainingComponents.length}`,
+  );
+  console.log(
+    `[watermark] Remaining component bounds:`,
+    remainingComponents.map((c) => ({
+      x: c.bounds.x,
+      y: c.bounds.y,
+      w: c.bounds.width,
+      h: c.bounds.height,
+      pixels: c.pixelCount,
+    })),
+  );
+
+  // 2. Group these remaining components purely by proximity (ignoring area)
+  const parentRem = Array.from({ length: nRem }, (_, i) => i);
+
+  function findRem(i: number): number {
+    let root = i;
+    while (root !== parentRem[root]) root = parentRem[root];
+    return root;
+  }
+
+  const wmProximityThreshold = imgWidth * wmProximityFactor;
+
+  console.log(
+    `[watermark] wmProximityThreshold: ${wmProximityThreshold} (factor: ${wmProximityFactor})`,
+  );
+
+  for (let i = 0; i < nRem; i++) {
+    for (let j = i + 1; j < nRem; j++) {
+      const dist = boxDistance(remainingComponents[i].bounds, remainingComponents[j].bounds);
+      if (dist <= wmProximityThreshold) {
+        const ri = findRem(i);
+        const rj = findRem(j);
+        console.log(
+          `[watermark] Merging comp ${i} (${JSON.stringify(remainingComponents[i].bounds)}) with comp ${j} (${JSON.stringify(remainingComponents[j].bounds)}) — distance: ${dist}`,
+        );
+        if (ri !== rj) parentRem[ri] = rj;
+      }
+    }
+  }
+
+  // 3. Merge their bounding boxes and combine their pixel counts
+  const mergedWatermarks = new Map<number, Component & { originalComps: Component[] }>();
+
+  for (let i = 0; i < nRem; i++) {
+    const root = findRem(i);
+    const comp = remainingComponents[i];
+
+    if (!mergedWatermarks.has(root)) {
+      mergedWatermarks.set(root, {
+        bounds: { ...comp.bounds },
+        pixelCount: comp.pixelCount,
+        originalComps: [comp], // Store originals for the debug readout
+      });
+    } else {
+      const cluster = mergedWatermarks.get(root)!;
+      const minX = Math.min(cluster.bounds.x, comp.bounds.x);
+      const minY = Math.min(cluster.bounds.y, comp.bounds.y);
+      const maxX = Math.max(
+        cluster.bounds.x + cluster.bounds.width,
+        comp.bounds.x + comp.bounds.width,
+      );
+      const maxY = Math.max(
+        cluster.bounds.y + cluster.bounds.height,
+        comp.bounds.y + comp.bounds.height,
+      );
+
+      cluster.bounds = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+      cluster.pixelCount += comp.pixelCount;
+      cluster.originalComps.push(comp);
+    }
+  }
+
+  console.log(
+    `[watermark] Merged clusters (${mergedWatermarks.size}):`,
+    Array.from(mergedWatermarks.values()).map((c) => ({
+      bounds: c.bounds,
+      pixelCount: c.pixelCount,
+      numComps: c.originalComps.length,
+    })),
+  );
+
+  // 4. Filter the newly merged clusters against your area ratio requirement
+  const minAreaPixels = totalPixels * minWatermarkAreaRatio;
+  console.log(
+    `[watermark] Min area ratio: ${minWatermarkAreaRatio} -> ${minAreaPixels} pixels (total pixels: ${totalPixels})`,
+  );
+  const watermarkCandidates = Array.from(mergedWatermarks.values()).filter((c) => {
+    const passes = c.pixelCount >= minAreaPixels;
+    console.log(
+      `[watermark] Cluster (${c.bounds.x},${c.bounds.y} ${c.bounds.width}x${c.bounds.height}) — pixelCount: ${c.pixelCount}, threshold: ${minAreaPixels} — ${passes ? "PASSES" : "FAILS"}`,
+    );
+    return passes;
+  });
+
+  // Keep track of which original components formed valid watermarks for the debugger
+  const validWatermarkOriginalComps = new Set(watermarkCandidates.flatMap((c) => c.originalComps));
+
+  if (debug) {
+    debug.componentsFound = components.length;
+    debug.clustersFound = clusters.length;
+    debug.cardBlockPixels = cardBlockCluster.combinedPixelCount;
+    debug.cardBlockComponents = cardBlockCluster.components.length;
+    debug.watermarkCandidates = watermarkCandidates.length;
+    debug.selectedWatermarkPixels =
+      watermarkCandidates.length > 0 ? watermarkCandidates[0].pixelCount : 0;
+    debug.totalPixels = totalPixels;
+    debug.proximityThreshold = wmProximityThreshold;
+    debug.samplingStep = samplingStep;
+    debug.cardProximityFactor = cardProximityFactor;
+    debug.wmProximityFactor = wmProximityFactor;
+    debug.minWatermarkAreaRatio = minWatermarkAreaRatio;
+    debug.components = components.map((c, i) => ({
+      index: i,
+      bounds: c.bounds,
+      pixelCount: c.pixelCount,
+      area: c.bounds.width * c.bounds.height,
+      isCardBlock: cardComponentSet.has(c),
+      isWatermarkCandidate: validWatermarkOriginalComps.has(c),
+    }));
+  }
+
+  if (watermarkCandidates.length === 0) return null;
+
+  // Return the largest contiguous watermark cluster found
+  watermarkCandidates.sort((a, b) => b.pixelCount - a.pixelCount);
+  return watermarkCandidates[0].bounds;
 }

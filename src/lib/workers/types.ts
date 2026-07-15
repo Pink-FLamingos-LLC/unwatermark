@@ -1,3 +1,9 @@
+export interface WatermarkDetectionConfig {
+  cardProximityFactor?: number; // fraction of imgWidth (default 0.02)
+  wmProximityFactor?: number; // fraction of imgWidth (default 0.02)
+  minWatermarkAreaRatio?: number; // fraction of totalPixels (default 0.01)
+}
+
 export interface BoundingBox {
   x: number;
   y: number;
@@ -30,6 +36,12 @@ export interface PdfDebugInfo {
   visual?: VisualDebugInfo;
 }
 
+export interface AlgorithmStageLog {
+  stage: string;
+  timestamp: number;
+  details: Record<string, unknown>;
+}
+
 export interface VisualDebugInfo {
   detectionMethod: "automatic" | "manual";
   renderScale: number;
@@ -40,6 +52,10 @@ export interface VisualDebugInfo {
   imageFormat: string;
   imageSizeBytes: number;
   diagnostic?: string;
+  renderSource?: string;
+  algorithmLogs?: AlgorithmStageLog[];
+  originalImageDataUrl?: string;
+  watermarkHighlightDataUrl?: string;
 }
 
 export type WorkerProgressMessage = {
