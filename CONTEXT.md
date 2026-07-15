@@ -8,9 +8,9 @@ A standalone tool for removing watermark logos from printed card sheet PDFs. Use
 A logo image stamped onto the first page of a card sheet PDF, typically positioned outside the card grid area. Not overlapping card content.
 _Avoid_: Stamp, overlay, branding, mark
 
-**Card Grid**:
-The grouped rectangular region on the PDF page containing the printable cards. Serves as the structural landmark for watermark detection.
-_Avoid_: Card block, card area, card layout
+**Card Block**:
+The region containing the printable cards, detected as a single contiguous blob or a cluster of similarly-sized nearby blobs. Serves as the structural landmark for watermark detection.
+_Avoid_: Card grid, card area, card layout
 
 **Detection Method**:
 The algorithm used to identify which image object on the page is the watermark. Two strategies are supported: structural (PDF object parsing) and visual (image rendering + contour analysis).
@@ -21,7 +21,7 @@ Parses the PDF's image XObjects and their bounding boxes. Identifies the card gr
 _Avoid_: PDF parsing, object-level detection
 
 **Visual Detection (Method A)**:
-Renders the PDF page to a canvas, binarizes the image, finds contours, identifies the card grid bounding box, and detects the watermark as the remaining non-white, non-card content. Supports manual highlight override.
+Renders the PDF page to a canvas, finds all non-background blobs, clusters similarly-sized nearby blobs into the Card Block, then detects the Watermark as the largest remaining blob outside the Card Block exceeding 1% of page area. Supports manual highlight override.
 _Avoid_: Image-based detection, render-based detection
 
 **Advanced Mode**:

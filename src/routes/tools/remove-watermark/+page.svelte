@@ -26,6 +26,7 @@
 	let isRenderingPreview = $state(false);
 	let extractedImageBytes = $state<Uint8Array | null>(null);
 	let isExtractingImage = $state(false);
+	let debugImageCanvasEl = $state<HTMLCanvasElement | undefined>();
 
 	function deriveCleanFilename(originalName: string): string {
 		const lastDot = originalName.lastIndexOf('.');
@@ -273,6 +274,24 @@
 		if (!advancedMode) {
 			extractedImageBytes = null;
 		}
+	});
+
+	$effect(() => {
+		const canvas = debugImageCanvasEl;
+		const bytes = extractedImageBytes;
+		if (!canvas || !bytes || !debugMode) return;
+
+		(async () => {
+			const blob = new Blob([bytes.slice().buffer as ArrayBuffer]);
+			const bitmap = await createImageBitmap(blob);
+			const maxW = 400;
+			const scale = Math.min(1, maxW / bitmap.width);
+			canvas.width = Math.round(bitmap.width * scale);
+			canvas.height = Math.round(bitmap.height * scale);
+			const ctx = canvas.getContext('2d')!;
+			ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+			bitmap.close();
+		})();
 	});
 </script>
 
@@ -530,13 +549,21 @@
 									Image: {debugInfo.visual.imageFormat.toUpperCase()} ({(debugInfo.visual.imageSizeBytes / 1024).toFixed(1)} KB)
 								</div>
 							{/if}
-							{#if debugInfo.visual.diagnostic}
-								<div class="text-on-surface-variant">
-									{debugInfo.visual.diagnostic}
-								</div>
-							{/if}
+						{#if debugInfo.visual.diagnostic}
+							<div class="text-on-surface-variant">
+								{debugInfo.visual.diagnostic}
+							</div>
+						{/if}
+					</div>
+				</div>
+				{#if extractedImageBytes}
+					<div class="mt-2">
+						<span class="text-on-surface-variant">Extracted image:</span>
+						<div class="mt-1 bg-surface-container rounded-lg overflow-hidden p-1 inline-block">
+							<canvas bind:this={debugImageCanvasEl}></canvas>
 						</div>
 					</div>
+				{/if}
 				{/if}
 			</div>
 		</div>
