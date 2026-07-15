@@ -18,6 +18,84 @@ interface PDFPageNode {
   MediaBox(): { get(index: number): number };
 }
 
+interface PDFStreamLike {
+  getUnencodedContents?(): Uint8Array;
+  getContents?(): Uint8Array;
+}
+
+function resolveStream(pdfDoc: PDFDocument, obj: unknown): PDFStreamLike | null {
+  if (!obj || typeof obj !== "object") return null;
+  if ("getUnencodedContents" in obj || "getContents" in obj) return obj as PDFStreamLike;
+  try {
+    const ctx = pdfDoc.context as any;
+    const resolved = ctx.lookup?.(obj) ?? ctx.lookupMaybe?.(obj);
+    if (
+      resolved &&
+      typeof resolved === "object" &&
+      ("getUnencodedContents" in resolved || "getContents" in resolved)
+    ) {
+      return resolved as PDFStreamLike;
+    }
+  } catch {
+    /* */
+  }
+  return null;
+}
+
+function readStreamBytes(stream: PDFStreamLike): Uint8Array | null {
+  try {
+    const bytes = stream.getUnencodedContents?.();
+    if (bytes && bytes.length > 0) return bytes;
+  } catch {
+    /* */
+  }
+  try {
+    const bytes = stream.getContents?.();
+    if (bytes && bytes.length > 0) return bytes;
+  } catch {
+    /* */
+  }
+  return null;
+}
+
+function decodePdfName(raw: unknown): string {
+  const rawName = raw as string | { decodeText?(): string };
+  const name = typeof rawName === "string" ? rawName : (rawName.decodeText?.() ?? String(rawName));
+  return name.startsWith("/") ? name.substring(1) : name;
+}
+
+async function decodeImageToCanvas(imageBytes: Uint8Array): Promise<HTMLCanvasElement> {
+  const blob = new Blob([imageBytes.slice().buffer as ArrayBuffer]);
+  const bitmap = await createImageBitmap(blob);
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  return canvas;
+}
+
+async function encodeCanvas(
+  canvas: HTMLCanvasElement,
+): Promise<{ bytes: Uint8Array; format: string }> {
+  try {
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error("toBlob failed"))),
+        "image/jpeg",
+        0.92,
+      );
+    });
+    return { bytes: new Uint8Array(await blob.arrayBuffer()), format: "jpeg" };
+  } catch {
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png");
+    });
+    return { bytes: new Uint8Array(await blob.arrayBuffer()), format: "png" };
+  }
+}
+
 async function paintOverRegion(
   canvas: HTMLCanvasElement,
   region: BoundingBox,
@@ -43,11 +121,7 @@ export async function processPdfVisual(
   onProgress: (stage: string, percent: number) => void,
   onDebug: (info: PdfDebugInfo) => void,
 ): Promise<Uint8Array> {
-  onProgress("Loading PDF for visual detection...", 0);
-
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const workerUrl = (await import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url")).default;
-  pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+  onProgress("Loading PDF...", 0);
 
   const pdfDoc = await PDFDocument.load(pdfBuffer, { parseSpeed: 0 });
   const pages = pdfDoc.getPages();
@@ -62,65 +136,61 @@ export async function processPdfVisual(
   const pageWidth = Number(mediaBox.get(2));
   const pageHeight = Number(mediaBox.get(3));
 
-  onProgress("Rendering page to canvas...", 10);
-
-  const doc = await pdfjsLib.getDocument({ data: pdfBuffer.slice(0) }).promise;
-  const pdfPage = await doc.getPage(1);
-  const baseViewport = pdfPage.getViewport({ scale: 1 });
-  const maxDim = Math.max(baseViewport.width, baseViewport.height);
-  const renderScale = Math.max(1, Math.min(4, Math.ceil(2000 / maxDim)));
-  const viewport = pdfPage.getViewport({ scale: renderScale });
-
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(viewport.width);
-  canvas.height = Math.round(viewport.height);
-  const ctx = canvas.getContext("2d")!;
-
-  const ops = await pdfPage.getOperatorList();
-  console.log("[visual] operator list length:", ops.fnArray.length);
-  console.log("[visual] first 20 ops:", ops.fnArray.slice(0, 20));
-  console.log("[visual] page viewport:", pdfPage.view);
-
-  try {
-    const renderTask = pdfPage.render({
-      canvas,
-      canvasContext: ctx,
-      viewport,
-    });
-    await renderTask.promise;
-    console.log("[visual] render completed successfully");
-  } catch (err) {
-    console.error("[visual] render error:", err);
+  const resources = pageNode.Resources();
+  if (!resources) {
+    throw new Error("Page has no resources");
   }
 
-  console.log("[visual] canvas:", canvas.width, "x", canvas.height);
-  console.log("[visual] viewport:", viewport.width, "x", viewport.height);
-
-  const dbgPixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-  let nonWhiteCount = 0;
-  let minLum = 255;
-  let darkestX = 0;
-  let darkestY = 0;
-  for (let y = 0; y < canvas.height; y++) {
-    for (let x = 0; x < canvas.width; x++) {
-      const idx = (y * canvas.width + x) * 4;
-      const lum = dbgPixels[idx] * 0.299 + dbgPixels[idx + 1] * 0.587 + dbgPixels[idx + 2] * 0.114;
-      if (lum < 245) nonWhiteCount++;
-      if (lum < minLum) {
-        minLum = lum;
-        darkestX = x;
-        darkestY = y;
+  let xobjectDict: { entries?(): Iterable<[unknown, unknown]> } | undefined;
+  if (resources.entries) {
+    for (const [key, value] of resources.entries()) {
+      if (decodePdfName(key) === "XObject") {
+        xobjectDict = value as { entries?(): Iterable<[unknown, unknown]> };
+        break;
       }
     }
   }
-  console.log("[visual] non-white pixels:", nonWhiteCount, "/", canvas.width * canvas.height);
-  console.log("[visual] min luminance:", minLum, "at", darkestX, darkestY);
-  if (nonWhiteCount > 0) {
-    const didx = (darkestY * canvas.width + darkestX) * 4;
-    console.log("[visual] darkest RGB:", dbgPixels[didx], dbgPixels[didx + 1], dbgPixels[didx + 2]);
+  if (!xobjectDict?.entries) {
+    throw new Error("No XObjects found on page");
   }
 
-  onProgress("Analyzing image pixels...", 40);
+  onProgress("Extracting image XObjects...", 10);
+
+  const xobjects: { name: string; bytes: Uint8Array; stream: PDFStreamLike }[] = [];
+  for (const [key, value] of xobjectDict.entries()) {
+    const name = decodePdfName(key);
+    const stream = resolveStream(pdfDoc, value);
+    if (!stream) continue;
+    const bytes = readStreamBytes(stream);
+    if (!bytes || bytes.length < 100) continue;
+    xobjects.push({ name, bytes, stream });
+  }
+
+  if (xobjects.length === 0) {
+    throw new Error("No image XObject streams found");
+  }
+
+  console.log("[visual] found", xobjects.length, "XObject streams");
+  for (const xo of xobjects) {
+    console.log(
+      "[visual] XObject",
+      xo.name,
+      "size:",
+      xo.bytes.length,
+      "first bytes:",
+      xo.bytes.slice(0, 8),
+    );
+  }
+
+  onProgress("Decoding image...", 30);
+
+  const xobject = xobjects[0];
+  const canvas = await decodeImageToCanvas(xobject.bytes);
+  const ctx = canvas.getContext("2d")!;
+
+  console.log("[visual] decoded image:", canvas.width, "x", canvas.height);
+
+  onProgress("Analyzing pixels...", 40);
 
   let watermarkBox: BoundingBox | null = null;
 
@@ -165,21 +235,21 @@ export async function processPdfVisual(
       pageWidth,
       pageHeight,
       resources: {},
-      xobjectNames: [],
+      xobjectNames: xobjects.map((x) => x.name),
       xobjectTypes: {},
       contentStreamLength: 0,
       imagePlacements: [],
       detectionResult: { watermark: null, images: [], gridImages: [] },
       visual: {
         detectionMethod: manualSelection ? "manual" : "automatic",
-        renderScale,
+        renderScale: 1,
         canvasWidth: canvas.width,
         canvasHeight: canvas.height,
         watermarkBox: { x: 0, y: 0, width: 0, height: 0 },
         bgColor,
         imageFormat: "none",
         imageSizeBytes: 0,
-        diagnostic: `non-white pixels: ${nonWhiteCount}/${totalSampled} sampled, luminance range: ${minLum.toFixed(0)}-${maxLum.toFixed(0)}`,
+        diagnostic: `XObject: ${xobject.name} (${xobject.bytes.length} bytes), non-white: ${nonWhiteCount}/${totalSampled}, lum: ${minLum.toFixed(0)}-${maxLum.toFixed(0)}`,
       },
     });
     throw new Error(
@@ -194,14 +264,14 @@ export async function processPdfVisual(
     pageWidth,
     pageHeight,
     resources: {},
-    xobjectNames: [],
+    xobjectNames: xobjects.map((x) => x.name),
     xobjectTypes: {},
     contentStreamLength: 0,
     imagePlacements: [],
     detectionResult: null,
     visual: {
       detectionMethod: manualSelection ? "manual" : "automatic",
-      renderScale,
+      renderScale: 1,
       canvasWidth: canvas.width,
       canvasHeight: canvas.height,
       watermarkBox,
@@ -215,78 +285,40 @@ export async function processPdfVisual(
 
   onProgress("Encoding modified image...", 70);
 
-  let imageBytes: Uint8Array;
-  let imageFormat = "jpeg";
-  try {
-    const blob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(
-        (b) => (b ? resolve(b) : reject(new Error("toBlob failed"))),
-        "image/jpeg",
-        0.92,
-      );
-    });
-    const buf = await blob.arrayBuffer();
-    imageBytes = new Uint8Array(buf);
-  } catch {
-    const blob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png");
-    });
-    const buf = await blob.arrayBuffer();
-    imageBytes = new Uint8Array(buf);
-    imageFormat = "png";
-  }
+  const encoded = await encodeCanvas(canvas);
 
   onDebug({
     pageCount: pages.length,
     pageWidth,
     pageHeight,
     resources: {},
-    xobjectNames: [],
+    xobjectNames: xobjects.map((x) => x.name),
     xobjectTypes: {},
     contentStreamLength: 0,
     imagePlacements: [],
     detectionResult: null,
     visual: {
       detectionMethod: manualSelection ? "manual" : "automatic",
-      renderScale,
+      renderScale: 1,
       canvasWidth: canvas.width,
       canvasHeight: canvas.height,
       watermarkBox,
       bgColor,
-      imageFormat,
-      imageSizeBytes: imageBytes.length,
+      imageFormat: encoded.format,
+      imageSizeBytes: encoded.bytes.length,
     },
   });
 
-  onProgress("Building new PDF...", 80);
+  onProgress("Replacing image in PDF...", 80);
 
-  const xobjectDict = pageNode.Resources()?.get?.(pdfDoc.context.obj("/XObject"));
-  if (xobjectDict?.entries) {
-    for (const [key] of xobjectDict.entries()) {
-      xobjectDict.delete?.(key);
-    }
-  }
+  const newStream = pdfDoc.context.stream(encoded.bytes);
+  const streamRef = pdfDoc.context.register(newStream);
 
-  const newImage = pdfDoc.context.stream(imageBytes, {
-    Type: "XObject",
-    Subtype: "Image",
-    Width: canvas.width,
-    Height: canvas.height,
-  });
-  const imageRef = pdfDoc.context.register(newImage);
-
-  const contentStr = `q ${pageWidth} 0 0 ${pageHeight} 0 0 cm /img Do Q`;
-  const contentBytes = new TextEncoder().encode(contentStr);
-  const contentStream = pdfDoc.context.stream(contentBytes);
-  const contentRef = pdfDoc.context.register(contentStream);
-
-  pageNode.set(pdfDoc.context.obj("Contents"), pdfDoc.context.obj([contentRef]));
-
-  const imgDict = pageNode.Resources()?.get?.(pdfDoc.context.obj("/XObject"));
-  if (imgDict) {
-    (imgDict as { set(key: unknown, value: unknown): void }).set(
-      pdfDoc.context.obj("/img"),
-      imageRef,
+  const xobjectDictObj = resources.get(pdfDoc.context.obj("/XObject"));
+  if (xobjectDictObj) {
+    (xobjectDictObj as { set(key: unknown, value: unknown): void }).set(
+      pdfDoc.context.obj(`/${xobject.name}`),
+      streamRef,
     );
   }
 
