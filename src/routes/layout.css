@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 @theme {
+  --spacing: 0.375rem;
   /* Surfaces */
   --color-surface-ebony: #0a0b14;
   --color-surface-charcoal: #141625;
@@ -69,10 +70,10 @@
   --color-outline-variant: #3f4a3c;
 
   /* Spacing */
-  --spacing-gutter-mobile: 12px;
+  --spacing-gutter-mobile: 16px;
   --spacing-tap-target: 48px;
-  --spacing-card-padding: 16px;
-  --spacing-margin-mobile: 16px;
+  --spacing-card-padding: 20px;
+  --spacing-margin-mobile: 24px;
 
   /* Border Radius */
   --radius-sm: 0.25rem;

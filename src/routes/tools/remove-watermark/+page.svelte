@@ -16,13 +16,15 @@
 	let detectionMethod = $state<DetectionMethod>('visual');
 	let uploadedFile = $state<File | null>(null);
 	let advancedMode = $state(false);
-	let manualSelection = $state<BoundingBox | null>(null);
+	let manualSelection = $state<BoundingBox[]>([]);
 	let pdfPageWidth = $state(612);
 	let pdfPageHeight = $state(792);
 	let autoDownload = $state(false);
 	let processedPdf = $state<Uint8Array | null>(null);
 	let processedFilename = $state<string>('');
 	let previewCanvasEl = $state<HTMLCanvasElement | undefined>();
+	let previewSectionEl = $state<HTMLDivElement | undefined>();
+	let downloadBtnEl = $state<HTMLButtonElement | undefined>();
 	let isRenderingPreview = $state(false);
 	let extractedImageBytes = $state<Uint8Array | null>(null);
 	let isExtractingImage = $state(false);
@@ -79,7 +81,7 @@
 		processedPdf = null;
 		if (method !== 'visual') {
 			advancedMode = false;
-			manualSelection = null;
+			manualSelection = [];
 		}
 		if (uploadedFile && method === 'structural') {
 			processFile(uploadedFile);
@@ -89,7 +91,7 @@
 		}
 	}
 
-	async function processFile(file: File, selection?: BoundingBox) {
+	async function processFile(file: File, selections?: BoundingBox[]) {
 		error = null;
 		debugInfo = null;
 		processedPdf = null;
@@ -103,13 +105,14 @@
 			try {
 			const result = await processPdfVisual(
 				pdfBuffer,
-				selection ?? null,
+				selections ?? [],
 				(s, p) => { stage = s; percent = p; },
 				(info) => { debugInfo = info; },
 				getDetectionConfig(),
 			);
 				const filename = deriveCleanFilename(file.name);
 				resetState();
+				advancedMode = false;
 				processedPdf = result.processedPdf;
 				modifiedImageBytes = result.modifiedImage;
 				processedFilename = filename;
@@ -200,10 +203,18 @@
 		}
 	});
 
+	$effect(() => {
+		if (processedPdf && downloadBtnEl && !isRenderingPreview) {
+			requestAnimationFrame(() => {
+				downloadBtnEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+			});
+		}
+	});
+
 	async function handleFile(file: File) {
 		uploadedFile = file;
 		error = null;
-		manualSelection = null;
+		manualSelection = [];
 		processedPdf = null;
 		if (detectionMethod === 'visual' && advancedMode) {
 			return;
@@ -211,12 +222,12 @@
 		processFile(file);
 	}
 
-	function handleSelection(box: BoundingBox) {
-		manualSelection = box;
+	function handleSelection(boxes: BoundingBox[]) {
+		manualSelection = boxes;
 	}
 
 	function handleSelectionClear() {
-		manualSelection = null;
+		manualSelection = [];
 	}
 
 	function handlePageDimensions(width: number, height: number) {
@@ -225,7 +236,7 @@
 	}
 
 	function processWithSelection() {
-		if (!uploadedFile || !manualSelection) return;
+		if (!uploadedFile || manualSelection.length === 0) return;
 		processFile(uploadedFile, manualSelection);
 	}
 
@@ -239,8 +250,9 @@
 		processedPdf = null;
 		uploadedFile = null;
 		error = null;
-		manualSelection = null;
+		manualSelection = [];
 		extractedImageBytes = null;
+		debugMode = false;
 	}
 
 	async function extractImage() {
@@ -350,28 +362,91 @@
 				<span class="text-label-lg text-on-surface-variant">Auto-download after processing</span>
 			</label>
 		</div>
+		<div class="mt-4">
+			<button
+				class="flex items-center gap-1.5 text-label-sm text-on-surface-variant hover:text-on-surface cursor-pointer bg-transparent border-none p-0"
+				onclick={() => detectionParamsExpanded = !detectionParamsExpanded}
+			>
+				<span class="inline-block transition-transform" class:rotate-90={detectionParamsExpanded}>&#9654;</span>
+				Detection Parameters
+			</button>
+			{#if detectionParamsExpanded}
+				<div class="mt-2 space-y-3 p-3 bg-surface-charcoal border border-[#FFFFFF10] rounded-xl">
+					<div>
+						<label class="text-label-xs text-on-surface-variant block mb-1">
+							Card Proximity: {cardProximityPct}% of width
+						</label>
+						<input
+							type="range"
+							min="0.1"
+							max="10"
+							step="0.1"
+							bind:value={cardProximityPct}
+							class="w-full accent-primary"
+						/>
+					</div>
+					<div>
+						<label class="text-label-xs text-on-surface-variant block mb-1">
+							Watermark Proximity: {wmProximityPct}% of width
+						</label>
+						<input
+							type="range"
+							min="0.1"
+							max="10"
+							step="0.1"
+							bind:value={wmProximityPct}
+							class="w-full accent-primary"
+						/>
+					</div>
+					<div>
+						<label class="text-label-xs text-on-surface-variant block mb-1">
+							Min Watermark Area: {minAreaRatioPct}% of image
+						</label>
+						<input
+							type="range"
+							min="0.01"
+							max="5"
+							step="0.01"
+							bind:value={minAreaRatioPct}
+							class="w-full accent-primary"
+						/>
+					</div>
+				</div>
+			{/if}
+		</div>
 		{#if uploadedFile && !isProcessing}
 			<div class="mt-4">
 				<DetectionMethodSelector selected={detectionMethod} onchange={handleMethodChange} />
 			</div>
-			{#if detectionMethod === 'visual'}
-				<div class="mt-4">
-					<label class="flex items-center gap-2 cursor-pointer">
-						<input type="checkbox" bind:checked={advancedMode} class="w-5 h-5 accent-primary" />
-						<span class="text-label-lg text-on-surface-variant">Advanced mode</span>
-					</label>
-					<p class="text-label-sm text-on-surface-variant/70 mt-1 ml-7">
-						Manually highlight the watermark region on the rendered page.
-					</p>
-				</div>
+			{#if !processedPdf && !(detectionMethod === 'visual' && advancedMode)}
+				<button
+					class="mt-4 w-full h-12 bg-primary text-on-primary rounded-lg text-label-lg font-semibold active:scale-95 transition-transform"
+					onclick={() => uploadedFile && processFile(uploadedFile)}
+				>
+					Process PDF
+				</button>
 			{/if}
+		{#if detectionMethod === 'visual'}
+			<div class="mt-4">
+			<button
+				class="w-full flex items-center justify-between px-4 py-3 bg-surface-charcoal border border-[#FFFFFF10] rounded-xl cursor-pointer hover:border-primary/30 transition-colors"
+				onclick={() => advancedMode = !advancedMode}
+			>
+				<div class="text-left">
+					<span class="text-label-lg text-on-surface block">Watermark not detected?</span>
+					<span class="text-label-sm text-on-surface-variant">Draw the area manually</span>
+				</div>
+				<span class="text-label-sm text-primary">{advancedMode ? 'Close' : 'Select area'}</span>
+			</button>
+			</div>
 			{#if advancedMode && detectionMethod === 'visual'}
-				<div class="mt-4">
+				<div class="mt-4 bg-surface-charcoal border border-[#FFFFFF10] rounded-xl p-4">
 					{#if isExtractingImage}
 						<div class="flex items-center justify-center h-32 bg-surface-container rounded-xl">
 							<span class="text-label-lg text-on-surface-variant">Extracting image...</span>
 						</div>
 					{:else if uploadedFile}
+						<p class="text-label-sm text-on-surface mb-2 bg-primary/10 rounded-lg px-3 py-2">Click elements on the page, draw a rectangle, or hold Shift to select multiple elements.</p>
 						<HighlightCanvas
 							pdfFile={uploadedFile}
 							imageData={extractedImageBytes ?? undefined}
@@ -382,45 +457,130 @@
 							onpagedimensions={handlePageDimensions}
 						/>
 					{/if}
-				</div>
-				{#if manualSelection}
+				{#if manualSelection.length > 0}
 					<button
 						class="mt-4 w-full h-12 bg-primary text-on-primary rounded-lg text-label-lg font-semibold active:scale-95 transition-transform"
 						onclick={processWithSelection}
 					>
-						Process
+						Remove watermark{manualSelection.length > 1 ? `s (${manualSelection.length} regions)` : ''}
 					</button>
 				{/if}
+				</div>
 			{/if}
 		{/if}
+		{/if}
 
-		{#if processedPdf}
-			<div class="mt-4 bg-surface-charcoal border border-[#FFFFFF10] rounded-xl p-4">
-				<h2 class="text-label-lg font-semibold text-on-surface mb-3">Preview</h2>
-				<div class="flex justify-center bg-surface-container rounded-lg overflow-hidden p-2">
-					{#if isRenderingPreview}
-						<div class="flex items-center justify-center h-64">
-							<span class="text-label-lg text-on-surface-variant">Rendering preview...</span>
-						</div>
-					{/if}
-					<canvas bind:this={previewCanvasEl} class="max-w-full" class:hidden={isRenderingPreview}></canvas>
-				</div>
-				<div class="mt-4 flex gap-3">
-					<button
-						class="flex-1 h-12 bg-primary text-on-primary rounded-lg text-label-lg font-semibold active:scale-95 transition-transform"
-						onclick={handleDownload}
-					>
-						Download {processedFilename}
-					</button>
-					<button
-						class="h-12 px-4 border border-on-surface-variant/30 text-on-surface-variant rounded-lg text-label-lg active:scale-95 transition-transform"
-						onclick={startOver}
-					>
-						Start over
-					</button>
-				</div>
+	{#if processedPdf}
+		<div bind:this={previewSectionEl} class="mt-4 bg-surface-charcoal border border-[#FFFFFF10] rounded-xl p-4">
+			<h2 class="text-label-lg font-semibold text-on-surface mb-3">Preview</h2>
+			<div class="flex justify-center bg-surface-container rounded-lg overflow-hidden p-2">
+				{#if isRenderingPreview}
+					<div class="flex items-center justify-center h-64">
+						<span class="text-label-lg text-on-surface-variant">Rendering preview...</span>
+					</div>
+				{/if}
+				<canvas bind:this={previewCanvasEl} class="max-w-full" class:hidden={isRenderingPreview}></canvas>
+			</div>
+			<div class="mt-4 flex gap-3">
+			<button
+				bind:this={downloadBtnEl}
+				class="flex-1 h-12 bg-primary text-on-primary rounded-lg text-label-lg font-semibold active:scale-95 transition-transform"
+				onclick={handleDownload}
+			>
+					Download {processedFilename}
+				</button>
+				<button
+					class="h-12 px-4 border border-on-surface-variant/30 text-on-surface-variant rounded-lg text-label-lg active:scale-95 transition-transform"
+					onclick={startOver}
+				>
+					Start over
+				</button>
+			</div>
+		</div>
+
+		{#if debugInfo?.detectionResult && !debugInfo.detectionResult.watermark}
+			<div class="mt-4 bg-meeple-yellow/10 border border-meeple-yellow/30 rounded-xl p-4">
+				<p class="text-label-md text-on-surface mb-2">No watermark detected</p>
+				<p class="text-label-sm text-on-surface-variant mb-3">
+					Try adjusting the detection parameters and process again.
+				</p>
+				<button
+					class="w-full h-10 bg-primary text-on-primary rounded-lg text-label-md font-semibold active:scale-95 transition-transform"
+					onclick={() => {
+						processedPdf = null;
+						detectionParamsExpanded = true;
+					}}
+				>
+					Adjust parameters & retry
+				</button>
 			</div>
 		{/if}
+
+		<div class="mt-4">
+			<button
+				class="flex items-center gap-1.5 text-label-sm text-on-surface-variant hover:text-on-surface cursor-pointer bg-transparent border-none p-0"
+				onclick={() => debugMode = !debugMode}
+			>
+				<span class="inline-block transition-transform" class:rotate-90={debugMode}>&#9654;</span>
+				See debug logs
+			</button>
+		</div>
+
+		{#if debugMode}
+			<div class="mt-2">
+				<button
+					class="flex items-center gap-1.5 text-label-sm text-on-surface-variant hover:text-on-surface cursor-pointer bg-transparent border-none p-0"
+					onclick={() => detectionParamsExpanded = !detectionParamsExpanded}
+				>
+					<span class="inline-block transition-transform" class:rotate-90={detectionParamsExpanded}>&#9654;</span>
+					Detection Parameters
+				</button>
+				{#if detectionParamsExpanded}
+					<div class="mt-2 space-y-3 p-3 bg-surface-charcoal border border-[#FFFFFF10] rounded-xl">
+						<div>
+							<label class="text-label-xs text-on-surface-variant block mb-1">
+								Card Proximity: {cardProximityPct}% of width
+							</label>
+							<input
+								type="range"
+								min="0.1"
+								max="10"
+								step="0.1"
+								bind:value={cardProximityPct}
+								class="w-full accent-primary"
+							/>
+						</div>
+						<div>
+							<label class="text-label-xs text-on-surface-variant block mb-1">
+								Watermark Proximity: {wmProximityPct}% of width
+							</label>
+							<input
+								type="range"
+								min="0.1"
+								max="10"
+								step="0.1"
+								bind:value={wmProximityPct}
+								class="w-full accent-primary"
+							/>
+						</div>
+						<div>
+							<label class="text-label-xs text-on-surface-variant block mb-1">
+								Min Watermark Area: {minAreaRatioPct}% of image
+							</label>
+							<input
+								type="range"
+								min="0.01"
+								max="5"
+								step="0.01"
+								bind:value={minAreaRatioPct}
+								class="w-full accent-primary"
+							/>
+						</div>
+					</div>
+				{/if}
+			</div>
+		{/if}
+	{/if}
 	{/if}
 
 	{#if error}
@@ -443,66 +603,6 @@
 			{/if}
 		</div>
 	{/if}
-
-	<div class="mt-4">
-		<label class="flex items-center gap-2 cursor-pointer">
-			<input type="checkbox" bind:checked={debugMode} class="w-5 h-5 accent-primary" />
-			<span class="text-label-lg text-on-surface-variant">Debug mode</span>
-		</label>
-	</div>
-
-	<div class="mt-2">
-		<button
-			class="flex items-center gap-1.5 text-label-sm text-on-surface-variant hover:text-on-surface cursor-pointer bg-transparent border-none p-0"
-			onclick={() => detectionParamsExpanded = !detectionParamsExpanded}
-		>
-			<span class="inline-block transition-transform" class:rotate-90={detectionParamsExpanded}>&#9654;</span>
-			Detection Parameters
-		</button>
-		{#if detectionParamsExpanded}
-			<div class="mt-2 space-y-3 p-3 bg-surface-charcoal border border-[#FFFFFF10] rounded-xl">
-				<div>
-					<label class="text-label-xs text-on-surface-variant block mb-1">
-						Card Proximity: {cardProximityPct}% of width
-					</label>
-					<input
-						type="range"
-						min="0.1"
-						max="10"
-						step="0.1"
-						bind:value={cardProximityPct}
-						class="w-full accent-primary"
-					/>
-				</div>
-				<div>
-					<label class="text-label-xs text-on-surface-variant block mb-1">
-						Watermark Proximity: {wmProximityPct}% of width
-					</label>
-					<input
-						type="range"
-						min="0.1"
-						max="10"
-						step="0.1"
-						bind:value={wmProximityPct}
-						class="w-full accent-primary"
-					/>
-				</div>
-				<div>
-					<label class="text-label-xs text-on-surface-variant block mb-1">
-						Min Watermark Area: {minAreaRatioPct}% of image
-					</label>
-					<input
-						type="range"
-						min="0.01"
-						max="5"
-						step="0.01"
-						bind:value={minAreaRatioPct}
-						class="w-full accent-primary"
-					/>
-				</div>
-			</div>
-		{/if}
-	</div>
 
 	{#if debugMode && debugInfo}
 		<div class="bg-surface-charcoal border border-[#FFFFFF10] rounded-xl p-4 mt-4">

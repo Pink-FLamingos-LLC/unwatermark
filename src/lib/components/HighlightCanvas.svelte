@@ -6,12 +6,20 @@
 	const FLOOD_FILL_TOLERANCE = 30;
 	const MIN_DRAG_PX = 3;
 
+	const REGION_COLORS = [
+		'#78dc77',
+		'#77b8ff',
+		'#ffb347',
+		'#ff6b6b',
+		'#c084fc',
+	];
+
 	interface Props {
 		pdfFile?: File;
 		imageData?: Uint8Array;
 		pageWidth: number;
 		pageHeight: number;
-		onselect?: (box: BoundingBox) => void;
+		onselect?: (boxes: BoundingBox[]) => void;
 		onclear?: () => void;
 		onpagedimensions?: (width: number, height: number) => void;
 	}
@@ -33,12 +41,18 @@
 	let isDragging = $state(false);
 	let dragStart = $state<{ x: number; y: number } | null>(null);
 	let dragEnd = $state<{ x: number; y: number } | null>(null);
-	let selection = $state<BoundingBox | null>(null);
+	let dragShift = $state(false);
+	let selections = $state<BoundingBox[]>([]);
+	let activeIndex = $state<number | null>(null);
 	let isLoading = $state(true);
 	let renderGeneration = 0;
 
 	let canvasCssWidth = $state(0);
 	let canvasCssHeight = $state(0);
+
+	function colorFor(i: number): string {
+		return REGION_COLORS[i % REGION_COLORS.length];
+	}
 
 	async function renderFromImageData(
 		canvas: HTMLCanvasElement,
@@ -66,8 +80,6 @@
 		ctx.scale(dpr, dpr);
 		ctx.drawImage(bitmap, 0, 0, canvasCssWidth, canvasCssHeight);
 		bitmap.close();
-
-		console.log('[highlight] rendered from image data, canvas:', canvas.width, 'x', canvas.height);
 
 		if (gen !== renderGeneration) return;
 
@@ -126,15 +138,8 @@
 		const hasContent = sampled > 0 && nonWhite / sampled > 0.01;
 
 		if (!hasContent && imageData) {
-			console.log('[highlight] pdfjs produced blank canvas, falling back to image data');
 			await renderFromImageData(canvas, imageData, gen);
 			return;
-		}
-
-		if (!hasContent) {
-			console.log('[highlight] pdfjs produced blank canvas, no fallback image data available');
-		} else {
-			console.log('[highlight] pdfjs render succeeded');
 		}
 
 		if (overlayCanvasEl) {
@@ -154,14 +159,13 @@
 		if (!canvas) return;
 		const gen = ++renderGeneration;
 		isLoading = true;
-		selection = null;
+		selections = [];
+		activeIndex = null;
 		onclear?.();
 
 		if (imageData) {
-			console.log('[highlight] using image data, size:', imageData.length);
 			renderFromImageData(canvas, imageData, gen);
 		} else if (pdfFile) {
-			console.log('[highlight] using pdfjs for file:', pdfFile.name);
 			renderFromPdf(canvas, pdfFile, gen);
 		}
 	});
@@ -173,15 +177,51 @@
 		};
 	}
 
-	function logSelection(label: string, sel: BoundingBox) {
-		console.log(`[highlight] ${label}`, JSON.stringify(sel), `cssSize=${canvasCssWidth}x${canvasCssHeight} page=${pageWidth}x${pageHeight}`);
-	}
-
 	function toCanvas(e: MouseEvent): { x: number; y: number } | null {
 		const canvas = overlayCanvasEl;
 		if (!canvas) return null;
 		const r = canvas.getBoundingClientRect();
 		return { x: e.clientX - r.left, y: e.clientY - r.top };
+	}
+
+	function isInsideSelection(
+		cssX: number,
+		cssY: number,
+		box: BoundingBox
+	): boolean {
+		const nx = (box.x / pageWidth) * canvasCssWidth;
+		const ny = (box.y / pageHeight) * canvasCssHeight;
+		const nw = (box.width / pageWidth) * canvasCssWidth;
+		const nh = (box.height / pageHeight) * canvasCssHeight;
+		return cssX >= nx && cssX <= nx + nw && cssY >= ny && cssY <= ny + nh;
+	}
+
+	function findSelectionAt(cssX: number, cssY: number): number {
+		for (let i = selections.length - 1; i >= 0; i--) {
+			if (isInsideSelection(cssX, cssY, selections[i])) return i;
+		}
+		return -1;
+	}
+
+	function addSelection(box: BoundingBox) {
+		selections = [...selections, box];
+		activeIndex = selections.length - 1;
+		onselect?.(selections);
+		drawOverlay();
+	}
+
+	function replaceSelections(box: BoundingBox) {
+		selections = [box];
+		activeIndex = 0;
+		onselect?.(selections);
+		drawOverlay();
+	}
+
+	function removeSelection(index: number) {
+		selections = selections.filter((_, i) => i !== index);
+		activeIndex = selections.length > 0 ? Math.min(index, selections.length - 1) : null;
+		onselect?.(selections);
+		drawOverlay();
 	}
 
 	function handleMousedown(e: MouseEvent) {
@@ -198,21 +238,31 @@
 		const pixel = ctx.getImageData(px, py, 1, 1).data;
 		const lum = getLuminance(pixel, 0);
 
+		const existingIdx = findSelectionAt(pos.x, pos.y);
+
+		if (existingIdx !== -1 && !e.shiftKey) {
+			activeIndex = existingIdx;
+			drawOverlay();
+			return;
+		}
+
 		if (lum <= WHITE_LUMINANCE_THRESHOLD) {
 			const w = pdfCanvas.width;
 			const h = pdfCanvas.height;
 			const allPixels = ctx.getImageData(0, 0, w, h).data;
 			const bounds = floodFillBoundary(allPixels, w, h, px, py, FLOOD_FILL_TOLERANCE);
 			if (bounds) {
-			selection = {
-				x: (bounds.x / dpr / canvasCssWidth) * pageWidth,
-				y: (bounds.y / dpr / canvasCssHeight) * pageHeight,
-				width: (bounds.width / dpr / canvasCssWidth) * pageWidth,
-				height: (bounds.height / dpr / canvasCssHeight) * pageHeight,
-			};
-			logSelection("flood-fill selection", selection);
-			onselect?.(selection);
-				drawOverlay();
+				const box: BoundingBox = {
+					x: (bounds.x / dpr / canvasCssWidth) * pageWidth,
+					y: (bounds.y / dpr / canvasCssHeight) * pageHeight,
+					width: (bounds.width / dpr / canvasCssWidth) * pageWidth,
+					height: (bounds.height / dpr / canvasCssHeight) * pageHeight,
+				};
+				if (e.shiftKey) {
+					addSelection(box);
+				} else {
+					replaceSelections(box);
+				}
 			}
 			return;
 		}
@@ -220,8 +270,7 @@
 		isDragging = true;
 		dragStart = pos;
 		dragEnd = pos;
-		selection = null;
-		onclear?.();
+		dragShift = e.shiftKey;
 	}
 
 	function handleMousemove(e: MouseEvent) {
@@ -247,31 +296,26 @@
 		if (w < MIN_DRAG_PX || h < MIN_DRAG_PX) {
 			dragStart = null;
 			dragEnd = null;
-			clearOverlay();
+			drawOverlay();
 			return;
 		}
 
 		const { pdfX, pdfY } = canvasToPdf(x1, y1);
-		selection = {
+		const box: BoundingBox = {
 			x: pdfX,
 			y: pdfY,
 			width: (w / canvasCssWidth) * pageWidth,
 			height: (h / canvasCssHeight) * pageHeight,
 		};
-		logSelection("drag selection", selection);
-		onselect?.(selection);
-		drawOverlay();
-		dragStart = null;
-		dragEnd = null;
-	}
 
-	function clearSelection() {
-		selection = null;
 		dragStart = null;
 		dragEnd = null;
-		isDragging = false;
-		onclear?.();
-		clearOverlay();
+
+		if (dragShift) {
+			addSelection(box);
+		} else {
+			replaceSelections(box);
+		}
 	}
 
 	function drawOverlay() {
@@ -282,6 +326,35 @@
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 		ctx.save();
 		ctx.scale(dpr, dpr);
+
+		selections.forEach((sel, i) => {
+			const isActive = i === activeIndex;
+			const color = colorFor(i);
+			const x = (sel.x / pageWidth) * canvasCssWidth;
+			const y = (sel.y / pageHeight) * canvasCssHeight;
+			const w = (sel.width / pageWidth) * canvasCssWidth;
+			const h = (sel.height / pageHeight) * canvasCssHeight;
+
+			ctx.fillStyle = isActive ? `${color}30` : `${color}18`;
+			ctx.fillRect(x, y, w, h);
+
+			ctx.strokeStyle = color;
+			ctx.lineWidth = isActive ? 2.5 : 1.5;
+			ctx.setLineDash(isActive ? [] : [4, 3]);
+			ctx.strokeRect(x, y, w, h);
+			ctx.setLineDash([]);
+
+			const label = `R${i + 1}`;
+			const pad = 3;
+			const fontSize = 11;
+			ctx.font = `${fontSize}px sans-serif`;
+			const tw = ctx.measureText(label).width;
+
+			ctx.fillStyle = color;
+			ctx.fillRect(x, y, tw + pad * 2, fontSize + pad * 2);
+			ctx.fillStyle = '#000';
+			ctx.fillText(label, x + pad, y + fontSize + pad);
+		});
 
 		if (isDragging && dragStart && dragEnd) {
 			const x = Math.min(dragStart.x, dragEnd.x);
@@ -294,27 +367,20 @@
 			ctx.lineWidth = 2;
 			ctx.setLineDash([6, 4]);
 			ctx.strokeRect(x, y, w, h);
-		} else if (selection) {
-			const x = (selection.x / pageWidth) * canvasCssWidth;
-			const y = (selection.y / pageHeight) * canvasCssHeight;
-			const w = (selection.width / pageWidth) * canvasCssWidth;
-			const h = (selection.height / pageHeight) * canvasCssHeight;
-			ctx.fillStyle = 'rgba(120, 220, 119, 0.15)';
-			ctx.fillRect(x, y, w, h);
-			ctx.strokeStyle = '#78dc77';
-			ctx.lineWidth = 2;
-			ctx.setLineDash([6, 4]);
-			ctx.strokeRect(x, y, w, h);
+			ctx.setLineDash([]);
 		}
 
 		ctx.restore();
 	}
 
-	function clearOverlay() {
-		const canvas = overlayCanvasEl;
-		if (!canvas) return;
-		const ctx = canvas.getContext('2d')!;
-		ctx.clearRect(0, 0, canvas.width, canvas.height);
+	function clearAll() {
+		selections = [];
+		activeIndex = null;
+		isDragging = false;
+		dragStart = null;
+		dragEnd = null;
+		onclear?.();
+		drawOverlay();
 	}
 </script>
 
@@ -338,12 +404,37 @@
 			onmouseleave={handleMouseup}
 		></canvas>
 	</div>
-	{#if selection}
-		<button
-			class="mt-2 w-full h-8 border border-on-surface-variant/30 text-on-surface-variant rounded-lg text-label-sm active:scale-95 transition-transform"
-			onclick={clearSelection}
-		>
-			Clear selection
-		</button>
+	{#if selections.length > 0}
+		<div class="p-3 space-y-2">
+			{#each selections as sel, i}
+				{@const color = colorFor(i)}
+				<div
+					class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border cursor-pointer text-label-sm transition-colors"
+					style="border-color: {color}; background-color: {color}12;"
+					class:opacity-80={activeIndex !== null && activeIndex !== i}
+					onclick={() => { activeIndex = i; drawOverlay(); }}
+				>
+					<span
+						class="inline-flex items-center justify-center w-5 h-5 rounded text-xs font-bold text-black"
+						style="background-color: {color}"
+					>{i + 1}</span>
+					<span class="text-on-surface-variant flex-1">
+						({sel.x.toFixed(0)}, {sel.y.toFixed(0)}) {sel.width.toFixed(0)}×{sel.height.toFixed(0)}
+					</span>
+					<button
+						class="w-5 h-5 flex items-center justify-center rounded hover:bg-surface-container text-on-surface-variant/60 hover:text-error text-xs cursor-pointer border-none"
+						onclick={() => removeSelection(i)}
+					>✕</button>
+				</div>
+			{/each}
+			<div class="flex gap-2">
+				<button
+					class="flex-1 h-8 border border-on-surface-variant/30 text-on-surface-variant rounded-lg text-label-sm active:scale-95 transition-transform cursor-pointer"
+					onclick={clearAll}
+				>
+					Clear all
+				</button>
+			</div>
+		</div>
 	{/if}
 </div>

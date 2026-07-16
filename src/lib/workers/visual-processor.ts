@@ -165,7 +165,7 @@ export interface VisualResult {
 
 export async function processPdfVisual(
   pdfBuffer: ArrayBuffer,
-  manualSelection: BoundingBox | null,
+  manualSelections: BoundingBox[],
   onProgress: (stage: string, percent: number) => void,
   onDebug: (info: PdfDebugInfo) => void,
   detectionConfig?: WatermarkDetectionConfig,
@@ -252,37 +252,41 @@ export async function processPdfVisual(
 
   onProgress("Analyzing pixels...", 40);
 
-  let watermarkBox: BoundingBox | null = null;
+  let watermarkBoxes: BoundingBox[] = [];
 
-  if (manualSelection) {
+  if (manualSelections.length > 0) {
     const scaleX = canvas.width / pageWidth;
     const scaleY = canvas.height / pageHeight;
 
-    console.log("[visual] MANUAL SELECTION pageWidth=", pageWidth, "pageHeight=", pageHeight);
-    console.log("[visual] MANUAL SELECTION canvas=", canvas.width, "x", canvas.height);
-    console.log("[visual] MANUAL SELECTION scale=", scaleX, scaleY);
-    console.log("[visual] MANUAL SELECTION pdfBox=", JSON.stringify(manualSelection));
+    console.log("[visual] MANUAL SELECTIONS count=", manualSelections.length, "pageWidth=", pageWidth, "pageHeight=", pageHeight);
+    console.log("[visual] MANUAL SELECTIONS canvas=", canvas.width, "x", canvas.height);
+    console.log("[visual] MANUAL SELECTIONS scale=", scaleX, scaleY);
 
-    watermarkBox = {
-      x: Math.round(manualSelection.x * scaleX),
-      y: Math.round(manualSelection.y * scaleY),
-      width: Math.round(manualSelection.width * scaleX),
-      height: Math.round(manualSelection.height * scaleY),
-    };
+    for (const sel of manualSelections) {
+      const box: BoundingBox = {
+        x: Math.max(0, Math.min(Math.round(sel.x * scaleX), canvas.width - 1)),
+        y: Math.max(0, Math.min(Math.round(sel.y * scaleY), canvas.height - 1)),
+        width: Math.min(Math.round(sel.width * scaleX), canvas.width - Math.max(0, Math.min(Math.round(sel.x * scaleX), canvas.width - 1))),
+        height: Math.min(Math.round(sel.height * scaleY), canvas.height - Math.max(0, Math.min(Math.round(sel.y * scaleY), canvas.height - 1))),
+      };
 
-    console.log("[visual] MANUAL SELECTION canvasBox BEFORE clamp=", JSON.stringify(watermarkBox));
+      if (box.width > 0 && box.height > 0) {
+        watermarkBoxes.push(box);
+      }
+    }
 
-    watermarkBox.x = Math.max(0, Math.min(watermarkBox.x, canvas.width - 1));
-    watermarkBox.y = Math.max(0, Math.min(watermarkBox.y, canvas.height - 1));
-    watermarkBox.width = Math.min(watermarkBox.width, canvas.width - watermarkBox.x);
-    watermarkBox.height = Math.min(watermarkBox.height, canvas.height - watermarkBox.y);
+    console.log("[visual] MANUAL SELECTIONS canvas boxes:", JSON.stringify(watermarkBoxes));
 
-    console.log("[visual] MANUAL SELECTION canvasBox AFTER clamp=", JSON.stringify(watermarkBox));
-
-    logStage("manual-selection", {
-      pdfSelection: manualSelection,
-      canvasSelection: watermarkBox,
-    });
+    if (watermarkBoxes.length > 0) {
+      logStage("manual-selections", {
+        count: watermarkBoxes.length,
+        selections: watermarkBoxes,
+      });
+    } else {
+      logStage("manual-selections-empty", {
+        reason: "all selections had zero area after clamping",
+      });
+    }
   } else {
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const detectionDebug: DetectionDebug = {} as DetectionDebug;
@@ -292,13 +296,14 @@ export async function processPdfVisual(
       canvasHeight: canvas.height,
     });
 
-    watermarkBox = detectWatermarkRegion(
+    const detected = detectWatermarkRegion(
       imageData.data,
       canvas.width,
       canvas.height,
       detectionConfig,
       detectionDebug,
     );
+    watermarkBoxes = detected ? [detected] : [];
 
     const componentBreakdown = (detectionDebug.components || []).map((c) => ({
       ...c,
@@ -328,11 +333,11 @@ export async function processPdfVisual(
     b: bgColor.b,
   });
 
-  const watermarkHighlightDataUrl = watermarkBox
-    ? highlightWatermarkRegion(canvas, watermarkBox)
+  const watermarkHighlightDataUrl = watermarkBoxes.length > 0
+    ? highlightWatermarkRegion(canvas, watermarkBoxes[0])
     : undefined;
 
-  if (!watermarkBox) {
+  if (watermarkBoxes.length === 0) {
     let nonWhiteCount = 0;
     let minLum = 255;
     let maxLum = 0;
@@ -362,7 +367,7 @@ export async function processPdfVisual(
       imagePlacements: [],
       detectionResult: { watermark: null, images: [], gridImages: [] },
       visual: {
-        detectionMethod: manualSelection ? "manual" : "automatic",
+        detectionMethod: manualSelections.length > 0 ? "manual" : "automatic",
         renderScale: 1,
         canvasWidth: canvas.width,
         canvasHeight: canvas.height,
@@ -381,12 +386,11 @@ export async function processPdfVisual(
     );
   }
 
+  const firstBox = watermarkBoxes[0];
   logStage("watermark-identified", {
-    x: watermarkBox.x,
-    y: watermarkBox.y,
-    width: watermarkBox.width,
-    height: watermarkBox.height,
-    method: manualSelection ? "manual" : "automatic",
+    count: watermarkBoxes.length,
+    firstBox: firstBox ? { x: firstBox.x, y: firstBox.y, width: firstBox.width, height: firstBox.height } : undefined,
+    method: manualSelections.length > 0 ? "manual" : "automatic",
   });
 
   onProgress("Removing watermark from image...", 60);
@@ -402,11 +406,11 @@ export async function processPdfVisual(
     imagePlacements: [],
     detectionResult: null,
     visual: {
-      detectionMethod: manualSelection ? "manual" : "automatic",
+      detectionMethod: manualSelections.length > 0 ? "manual" : "automatic",
       renderScale: 1,
       canvasWidth: canvas.width,
       canvasHeight: canvas.height,
-      watermarkBox,
+      watermarkBox: firstBox || { x: 0, y: 0, width: 0, height: 0 },
       bgColor,
       imageFormat: "pending",
       imageSizeBytes: 0,
@@ -418,17 +422,18 @@ export async function processPdfVisual(
   });
 
   const paintStart = performance.now();
-  console.log("[visual] paintOverRegion: box=", JSON.stringify(watermarkBox), "bgColor=", JSON.stringify(bgColor), "canvas=", canvas.width, "x", canvas.height);
-  await paintOverRegion(canvas, watermarkBox, bgColor);
-  const paintCheck = canvas.getContext("2d")!.getImageData(watermarkBox.x, watermarkBox.y, Math.min(watermarkBox.width, 5), Math.min(watermarkBox.height, 5));
-  console.log("[visual] after paint, first few pixels r=", paintCheck.data[0], paintCheck.data[1], paintCheck.data[2]);
+  const paintedRegions: Record<string, unknown>[] = [];
+  for (const box of watermarkBoxes) {
+    await paintOverRegion(canvas, box, bgColor);
+    paintedRegions.push({
+      x: box.x,
+      y: box.y,
+      width: box.width,
+      height: box.height,
+    });
+  }
   logStage("paint-over-complete", {
-    region: {
-      x: watermarkBox.x,
-      y: watermarkBox.y,
-      width: watermarkBox.width,
-      height: watermarkBox.height,
-    },
+    regions: paintedRegions,
     bgColor,
     timeMs: `${(performance.now() - paintStart).toFixed(0)}ms`,
   });
@@ -445,7 +450,7 @@ export async function processPdfVisual(
 
   logStage("summary", {
     totalTime: `${(performance.now() - t0).toFixed(0)}ms`,
-    detectionMethod: manualSelection ? "manual" : "automatic",
+    detectionMethod: manualSelections.length > 0 ? "manual" : "automatic",
     renderSource,
     finalImageFormat: encoded.format,
     finalImageSize: encoded.bytes.length,
@@ -462,11 +467,11 @@ export async function processPdfVisual(
     imagePlacements: [],
     detectionResult: null,
     visual: {
-      detectionMethod: manualSelection ? "manual" : "automatic",
+      detectionMethod: manualSelections.length > 0 ? "manual" : "automatic",
       renderScale: 1,
       canvasWidth: canvas.width,
       canvasHeight: canvas.height,
-      watermarkBox,
+      watermarkBox: firstBox || { x: 0, y: 0, width: 0, height: 0 },
       bgColor,
       imageFormat: encoded.format,
       imageSizeBytes: encoded.bytes.length,
