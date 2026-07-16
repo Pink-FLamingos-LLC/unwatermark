@@ -93,9 +93,7 @@ function resolveStream(pdfDoc: PDFDocument, obj: unknown): PDFStreamLike | null 
     ) {
       return resolved as PDFStreamLike;
     }
-  } catch {
-    /* */
-  }
+  } catch {}
   return null;
 }
 
@@ -103,15 +101,11 @@ function readStreamBytes(stream: PDFStreamLike): Uint8Array | null {
   try {
     const bytes = stream.getUnencodedContents?.();
     if (bytes && bytes.length > 0) return bytes;
-  } catch {
-    /* */
-  }
+  } catch {}
   try {
     const bytes = stream.getContents?.();
     if (bytes && bytes.length > 0) return bytes;
-  } catch {
-    /* */
-  }
+  } catch {}
   return null;
 }
 

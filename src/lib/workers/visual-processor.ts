@@ -3,7 +3,9 @@ import { detectWatermarkRegion, findBackgroundColor, type DetectionDebug } from 
 import type {
   BoundingBox,
   PdfDebugInfo,
+  VisualDebugInfo,
   AlgorithmStageLog,
+  ImagePlacement,
   WatermarkDetectionConfig,
 } from "./types";
 
@@ -241,6 +243,42 @@ export async function processPdfVisual(
 
   const ctx = canvas.getContext("2d")!;
   const originalImageDataUrl = canvasToDebugDataUrl(canvas);
+  const debugPageInfo = {
+    pageCount: pages.length,
+    pageWidth,
+    pageHeight,
+    resources: {} as Record<string, string[]>,
+    xobjectNames: [] as string[],
+    xobjectTypes: {} as Record<string, string>,
+    contentStreamLength: 0,
+    imagePlacements: [] as ImagePlacement[],
+  };
+
+  function visualInfo(
+    bgColor: { r: number; g: number; b: number },
+    watermarkBox: BoundingBox,
+    overrides: Partial<
+      Pick<
+        VisualDebugInfo,
+        "imageFormat" | "imageSizeBytes" | "watermarkHighlightDataUrl" | "diagnostic"
+      >
+    > = {},
+  ): VisualDebugInfo {
+    return {
+      detectionMethod: manualSelections.length > 0 ? "manual" : "automatic",
+      renderScale: 1,
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+      watermarkBox,
+      bgColor,
+      imageFormat: "none",
+      imageSizeBytes: 0,
+      renderSource,
+      algorithmLogs,
+      originalImageDataUrl,
+      ...overrides,
+    };
+  }
 
   logStage("render-source", {
     source: renderSource,
@@ -369,29 +407,9 @@ export async function processPdfVisual(
     });
 
     onDebug({
-      pageCount: pages.length,
-      pageWidth,
-      pageHeight,
-      resources: {},
-      xobjectNames: [],
-      xobjectTypes: {},
-      contentStreamLength: 0,
-      imagePlacements: [],
+      ...debugPageInfo,
       detectionResult: { watermark: null, images: [], gridImages: [] },
-      visual: {
-        detectionMethod: manualSelections.length > 0 ? "manual" : "automatic",
-        renderScale: 1,
-        canvasWidth: canvas.width,
-        canvasHeight: canvas.height,
-        watermarkBox: { x: 0, y: 0, width: 0, height: 0 },
-        bgColor,
-        imageFormat: "none",
-        imageSizeBytes: 0,
-        diagnostic,
-        renderSource,
-        algorithmLogs,
-        originalImageDataUrl,
-      },
+      visual: visualInfo(bgColor, { x: 0, y: 0, width: 0, height: 0 }, { diagnostic }),
     });
     throw new Error("No watermark detected visually. Try manual selection.");
   }
@@ -408,29 +426,12 @@ export async function processPdfVisual(
   onProgress("Removing watermark from image...", 60);
 
   onDebug({
-    pageCount: pages.length,
-    pageWidth,
-    pageHeight,
-    resources: {},
-    xobjectNames: [],
-    xobjectTypes: {},
-    contentStreamLength: 0,
-    imagePlacements: [],
+    ...debugPageInfo,
     detectionResult: null,
-    visual: {
-      detectionMethod: manualSelections.length > 0 ? "manual" : "automatic",
-      renderScale: 1,
-      canvasWidth: canvas.width,
-      canvasHeight: canvas.height,
-      watermarkBox: firstBox || { x: 0, y: 0, width: 0, height: 0 },
-      bgColor,
+    visual: visualInfo(bgColor, firstBox || { x: 0, y: 0, width: 0, height: 0 }, {
       imageFormat: "pending",
-      imageSizeBytes: 0,
-      renderSource,
-      algorithmLogs,
-      originalImageDataUrl,
       watermarkHighlightDataUrl,
-    },
+    }),
   });
 
   const paintStart = performance.now();
@@ -469,29 +470,13 @@ export async function processPdfVisual(
   });
 
   onDebug({
-    pageCount: pages.length,
-    pageWidth,
-    pageHeight,
-    resources: {},
-    xobjectNames: [],
-    xobjectTypes: {},
-    contentStreamLength: 0,
-    imagePlacements: [],
+    ...debugPageInfo,
     detectionResult: null,
-    visual: {
-      detectionMethod: manualSelections.length > 0 ? "manual" : "automatic",
-      renderScale: 1,
-      canvasWidth: canvas.width,
-      canvasHeight: canvas.height,
-      watermarkBox: firstBox || { x: 0, y: 0, width: 0, height: 0 },
-      bgColor,
+    visual: visualInfo(bgColor, firstBox || { x: 0, y: 0, width: 0, height: 0 }, {
       imageFormat: encoded.format,
       imageSizeBytes: encoded.bytes.length,
-      renderSource,
-      algorithmLogs,
-      originalImageDataUrl,
       watermarkHighlightDataUrl,
-    },
+    }),
   });
 
   onProgress("Replacing image in PDF...", 80);

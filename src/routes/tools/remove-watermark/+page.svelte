@@ -313,12 +313,20 @@
 				<span class="inline-block transition-transform" class:rotate-90={detectionParamsExpanded}>&#9654;</span>
 				Detection Parameters
 			</button>
+			{#if !detectionParamsExpanded}
+				<p class="text-label-xs text-on-surface-variant/60 mt-1">
+					Fine-tune how the watermark detection algorithm identifies and filters watermarks. Adjust proximity thresholds, area ratios, and sensitivity.
+				</p>
+			{/if}
 			{#if detectionParamsExpanded}
 				<div class="mt-2 space-y-3 p-3 bg-surface-charcoal border border-[#FFFFFF10] rounded-xl">
 					<div>
 						<label class="text-label-xs text-on-surface-variant block mb-1">
 							Card Proximity: {cardProximityPct}% of width
 						</label>
+						<p class="text-label-xs text-on-surface-variant/60 mb-1">
+							Maximum distance between similar-sized components to be grouped into a card block. Higher values merge more components.
+						</p>
 						<input
 							type="range"
 							min="0.1"
@@ -332,6 +340,9 @@
 						<label class="text-label-xs text-on-surface-variant block mb-1">
 							Watermark Proximity: {wmProximityPct}% of width
 						</label>
+						<p class="text-label-xs text-on-surface-variant/60 mb-1">
+							Maximum distance between non-card components to merge into a watermark candidate. Higher values create larger merged regions.
+						</p>
 						<input
 							type="range"
 							min="0.1"
@@ -345,6 +356,9 @@
 						<label class="text-label-xs text-on-surface-variant block mb-1">
 							Min Watermark Area: {minAreaRatioPct}% of image
 						</label>
+						<p class="text-label-xs text-on-surface-variant/60 mb-1">
+							Minimum pixel area a merged cluster must occupy to qualify as a watermark. Lower values catch smaller elements but may increase false positives.
+						</p>
 						<input
 							type="range"
 							min="0.01"
@@ -473,12 +487,20 @@
 					<span class="inline-block transition-transform" class:rotate-90={detectionParamsExpanded}>&#9654;</span>
 					Detection Parameters
 				</button>
+				{#if !detectionParamsExpanded}
+					<p class="text-label-xs text-on-surface-variant/60 mt-1">
+						Fine-tune how the watermark detection algorithm identifies and filters watermarks. Adjust proximity thresholds, area ratios, and sensitivity.
+					</p>
+				{/if}
 				{#if detectionParamsExpanded}
 					<div class="mt-2 space-y-3 p-3 bg-surface-charcoal border border-[#FFFFFF10] rounded-xl">
 						<div>
 							<label class="text-label-xs text-on-surface-variant block mb-1">
 								Card Proximity: {cardProximityPct}% of width
 							</label>
+							<p class="text-label-xs text-on-surface-variant/60 mb-1">
+								Maximum distance between similar-sized components to be grouped into a card block. Higher values merge more components.
+							</p>
 							<input
 								type="range"
 								min="0.1"
@@ -492,6 +514,9 @@
 							<label class="text-label-xs text-on-surface-variant block mb-1">
 								Watermark Proximity: {wmProximityPct}% of width
 							</label>
+							<p class="text-label-xs text-on-surface-variant/60 mb-1">
+								Maximum distance between non-card components to merge into a watermark candidate. Higher values create larger merged regions.
+							</p>
 							<input
 								type="range"
 								min="0.1"
@@ -505,6 +530,9 @@
 							<label class="text-label-xs text-on-surface-variant block mb-1">
 								Min Watermark Area: {minAreaRatioPct}% of image
 							</label>
+							<p class="text-label-xs text-on-surface-variant/60 mb-1">
+								Minimum pixel area a merged cluster must occupy to qualify as a watermark. Lower values catch smaller elements but may increase false positives.
+							</p>
 							<input
 								type="range"
 								min="0.01"
