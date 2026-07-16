@@ -79,8 +79,6 @@ export type WorkerErrorMessage = {
   message: string;
 };
 
-export type DetectionMethod = "structural" | "visual";
-
 export type WorkerMessage =
   | WorkerProgressMessage
   | WorkerResultMessage

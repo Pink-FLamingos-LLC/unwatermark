@@ -258,7 +258,14 @@ export async function processPdfVisual(
     const scaleX = canvas.width / pageWidth;
     const scaleY = canvas.height / pageHeight;
 
-    console.log("[visual] MANUAL SELECTIONS count=", manualSelections.length, "pageWidth=", pageWidth, "pageHeight=", pageHeight);
+    console.log(
+      "[visual] MANUAL SELECTIONS count=",
+      manualSelections.length,
+      "pageWidth=",
+      pageWidth,
+      "pageHeight=",
+      pageHeight,
+    );
     console.log("[visual] MANUAL SELECTIONS canvas=", canvas.width, "x", canvas.height);
     console.log("[visual] MANUAL SELECTIONS scale=", scaleX, scaleY);
 
@@ -266,8 +273,14 @@ export async function processPdfVisual(
       const box: BoundingBox = {
         x: Math.max(0, Math.min(Math.round(sel.x * scaleX), canvas.width - 1)),
         y: Math.max(0, Math.min(Math.round(sel.y * scaleY), canvas.height - 1)),
-        width: Math.min(Math.round(sel.width * scaleX), canvas.width - Math.max(0, Math.min(Math.round(sel.x * scaleX), canvas.width - 1))),
-        height: Math.min(Math.round(sel.height * scaleY), canvas.height - Math.max(0, Math.min(Math.round(sel.y * scaleY), canvas.height - 1))),
+        width: Math.min(
+          Math.round(sel.width * scaleX),
+          canvas.width - Math.max(0, Math.min(Math.round(sel.x * scaleX), canvas.width - 1)),
+        ),
+        height: Math.min(
+          Math.round(sel.height * scaleY),
+          canvas.height - Math.max(0, Math.min(Math.round(sel.y * scaleY), canvas.height - 1)),
+        ),
       };
 
       if (box.width > 0 && box.height > 0) {
@@ -333,9 +346,8 @@ export async function processPdfVisual(
     b: bgColor.b,
   });
 
-  const watermarkHighlightDataUrl = watermarkBoxes.length > 0
-    ? highlightWatermarkRegion(canvas, watermarkBoxes[0])
-    : undefined;
+  const watermarkHighlightDataUrl =
+    watermarkBoxes.length > 0 ? highlightWatermarkRegion(canvas, watermarkBoxes[0]) : undefined;
 
   if (watermarkBoxes.length === 0) {
     let nonWhiteCount = 0;
@@ -381,15 +393,15 @@ export async function processPdfVisual(
         originalImageDataUrl,
       },
     });
-    throw new Error(
-      "No watermark detected visually. Try manual selection or structural detection.",
-    );
+    throw new Error("No watermark detected visually. Try manual selection.");
   }
 
   const firstBox = watermarkBoxes[0];
   logStage("watermark-identified", {
     count: watermarkBoxes.length,
-    firstBox: firstBox ? { x: firstBox.x, y: firstBox.y, width: firstBox.width, height: firstBox.height } : undefined,
+    firstBox: firstBox
+      ? { x: firstBox.x, y: firstBox.y, width: firstBox.width, height: firstBox.height }
+      : undefined,
     method: manualSelections.length > 0 ? "manual" : "automatic",
   });
 

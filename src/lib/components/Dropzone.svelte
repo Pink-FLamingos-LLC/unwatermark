@@ -10,8 +10,6 @@
 	let isDragging = $state(false);
 	let fileInput: HTMLInputElement;
 
-	const MAX_FILE_SIZE = 50 * 1024 * 1024;
-
 	function formatFileSize(bytes: number): string {
 		if (bytes < 1024) return `${bytes} B`;
 		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -21,9 +19,6 @@
 	function validateFile(f: File): string | null {
 		if (f.type !== 'application/pdf') {
 			return 'Only PDF files are accepted';
-		}
-		if (f.size > MAX_FILE_SIZE) {
-			return `File too large. Maximum size is ${formatFileSize(MAX_FILE_SIZE)}`;
 		}
 		return null;
 	}
@@ -113,7 +108,7 @@
 			<line x1="12" y1="3" x2="12" y2="15"></line>
 		</svg>
 		<p class="text-body-md text-on-surface mb-1">Click or drag and drop a PDF</p>
-		<p class="text-label-sm text-on-surface-variant">PDF files only, up to 50MB</p>
+		<p class="text-label-sm text-on-surface-variant">PDF files only</p>
 	{/if}
 </div>
 
